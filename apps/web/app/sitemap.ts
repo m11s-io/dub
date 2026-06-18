@@ -1,3 +1,4 @@
+import { prisma } from "@/lib/prisma";
 import {
   getMarketplaceAllHref,
   getMarketplaceCanonicalUrl,
@@ -5,9 +6,8 @@ import {
   getMarketplaceHref,
   getMarketplaceProgramHref,
 } from "@/ui/program-marketplace/utils/urls";
-import { prisma } from "@dub/prisma";
-import { Category, Prisma } from "@dub/prisma/client";
 import { PARTNERS_HOSTNAMES, SHORT_DOMAIN } from "@dub/utils";
+import { Category, Prisma } from "@prisma/client";
 import { MetadataRoute } from "next";
 import { headers } from "next/headers";
 

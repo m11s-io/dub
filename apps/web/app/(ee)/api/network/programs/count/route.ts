@@ -1,8 +1,8 @@
 import { withPartnerProfile } from "@/lib/auth/partner";
 import { buildNetworkProgramCountWhereSql } from "@/lib/fetchers/get-network-program-counts";
+import { prisma } from "@/lib/prisma";
 import { DEFAULT_PARTNER_GROUP } from "@/lib/zod/schemas/groups";
 import { getNetworkProgramsCountQuerySchema } from "@/lib/zod/schemas/program-network";
-import { prisma } from "@dub/prisma";
 import { NextResponse } from "next/server";
 
 // GET /api/network/programs/count - get the number of available programs in the network
