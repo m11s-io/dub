@@ -15,10 +15,11 @@ jobs:
         with:
           version: 9.15.9
 
-      # Node 20 matches upstream dub CI (playwright.yaml, e2e.yaml)
+      # Node 22 LTS — dub has no engines constraint; Node 20 (used in upstream
+      # playwright.yaml for test tooling) is deprecated on GitHub Actions runners.
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: pnpm
 
       - name: Install dependencies
