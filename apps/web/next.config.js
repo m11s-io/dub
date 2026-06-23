@@ -24,6 +24,7 @@ module.exports = withPlausibleProxy({
   apiPath: "/_proxy/plausible/event",
 })({
   reactStrictMode: false,
+  output: "standalone",
   transpilePackages: [
     "prettier",
     "shiki",
