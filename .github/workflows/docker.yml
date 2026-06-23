@@ -15,15 +15,19 @@ jobs:
         with:
           version: 9.15.9
 
+      # Node 20 matches upstream dub CI (playwright.yaml, e2e.yaml)
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 20
           cache: pnpm
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
       - name: Build Next.js app
+        # Stub env vars derived from upstream .github/workflows/playwright.yaml —
+        # these satisfy module-level SDK initializations (QStash, Stripe, etc.)
+        # that would otherwise abort the build without real credentials.
         env:
           DATABASE_URL: mysql://build:build@localhost/build
           NEXTAUTH_SECRET: build-placeholder-secret-32chars!!
