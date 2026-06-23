@@ -8,6 +8,22 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: build
+          MYSQL_USER: build
+          MYSQL_PASSWORD: build
+          MYSQL_ROOT_PASSWORD: build
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -ubuild -pbuild"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
     steps:
       - uses: actions/checkout@v4
 
@@ -38,33 +54,27 @@ jobs:
           TINYBIRD_API_URL=http://localhost:7181
           ANTHROPIC_API_KEY=sk-ant-api03-build-placeholder-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
           STRIPE_SECRET_KEY=sk_test_build_placeholder
+          STRIPE_APP_SECRET_KEY=sk_test_build_placeholder
+          STRIPE_APP_SECRET_KEY_TEST=sk_test_build_placeholder
+          STRIPE_APP_SECRET_KEY_SANDBOX=sk_test_build_placeholder
           STRIPE_WEBHOOK_SECRET=whsec_build_placeholder
           CRON_SECRET=xx
+          AXIOM_TOKEN=axiom_build_placeholder
+          AXIOM_DATASET=build
+          PLAIN_API_KEY=plain_build_placeholder
           UPSTASH_REDIS_REST_URL=http://localhost:6379
           UPSTASH_REDIS_REST_TOKEN=xx
+          UPSTASH_VECTOR_REST_URL=http://localhost:8080
+          UPSTASH_VECTOR_REST_TOKEN=xx
           EOF
 
+      - name: Prepare build database
+        run: pnpm --filter web prisma:push
+
       - name: Build Next.js app
-        # Stub env vars derived from upstream .github/workflows/playwright.yaml —
-        # these satisfy module-level SDK initializations (QStash, Stripe, etc.)
-        # that would otherwise abort the build without real credentials.
         env:
-          DATABASE_URL: mysql://build:build@localhost/build
-          NEXTAUTH_SECRET: build-placeholder-secret-32chars!!
-          NEXTAUTH_URL: http://localhost:3000
           NEXT_TELEMETRY_DISABLED: 1
           NODE_OPTIONS: --max-old-space-size=8192
-          QSTASH_TOKEN: xx
-          QSTASH_CURRENT_SIGNING_KEY: xx
-          QSTASH_NEXT_SIGNING_KEY: xx
-          TINYBIRD_API_KEY: xx
-          TINYBIRD_API_URL: xx
-          ANTHROPIC_API_KEY: sk-ant-api03-build-placeholder-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-          STRIPE_SECRET_KEY: xx
-          STRIPE_WEBHOOK_SECRET: xx
-          CRON_SECRET: xx
-          UPSTASH_REDIS_REST_URL: http://localhost:6379
-          UPSTASH_REDIS_REST_TOKEN: xx
         run: pnpm turbo build --filter=web
 
       - name: Set up Docker Buildx
