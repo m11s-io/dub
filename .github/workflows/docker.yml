@@ -25,6 +25,25 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      - name: Create build-time env file
+        run: |
+          cat > apps/web/.env <<'EOF'
+          DATABASE_URL=mysql://build:build@localhost/build
+          NEXTAUTH_SECRET=build-placeholder-secret-32chars!!
+          NEXTAUTH_URL=http://localhost:3000
+          QSTASH_TOKEN=xx
+          QSTASH_CURRENT_SIGNING_KEY=xx
+          QSTASH_NEXT_SIGNING_KEY=xx
+          TINYBIRD_API_KEY=xx
+          TINYBIRD_API_URL=http://localhost:7181
+          ANTHROPIC_API_KEY=sk-ant-api03-build-placeholder-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+          STRIPE_SECRET_KEY=sk_test_build_placeholder
+          STRIPE_WEBHOOK_SECRET=whsec_build_placeholder
+          CRON_SECRET=xx
+          UPSTASH_REDIS_REST_URL=http://localhost:6379
+          UPSTASH_REDIS_REST_TOKEN=xx
+          EOF
+
       - name: Build Next.js app
         # Stub env vars derived from upstream .github/workflows/playwright.yaml —
         # these satisfy module-level SDK initializations (QStash, Stripe, etc.)
