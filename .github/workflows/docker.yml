@@ -30,6 +30,8 @@ jobs:
           NEXTAUTH_URL: http://localhost:3000
           NEXT_TELEMETRY_DISABLED: 1
           NODE_OPTIONS: --max-old-space-size=6144
+          QSTASH_CURRENT_SIGNING_KEY: build-placeholder
+          QSTASH_NEXT_SIGNING_KEY: build-placeholder
         run: pnpm turbo build --filter=web
 
       - name: Set up Docker Buildx
