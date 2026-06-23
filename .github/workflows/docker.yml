@@ -40,7 +40,7 @@ jobs:
           QSTASH_NEXT_SIGNING_KEY: xx
           TINYBIRD_API_KEY: xx
           TINYBIRD_API_URL: xx
-          ANTHROPIC_API_KEY: xx
+          ANTHROPIC_API_KEY: sk-ant-api03-build-placeholder-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
           STRIPE_SECRET_KEY: xx
           STRIPE_WEBHOOK_SECRET: xx
           CRON_SECRET: xx
