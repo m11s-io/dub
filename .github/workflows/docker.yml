@@ -11,13 +11,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Add swap space
-        run: |
-          sudo fallocate -l 8G /swapfile
-          sudo chmod 600 /swapfile
-          sudo mkswap /swapfile
-          sudo swapon /swapfile
-
       - uses: pnpm/action-setup@v4
         with:
           version: 9.15.9
