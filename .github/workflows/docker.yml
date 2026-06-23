@@ -97,3 +97,15 @@ jobs:
             m11s/dub:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+      - name: Build and push migration image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: .docker/Dockerfile.migrate
+          push: true
+          tags: |
+            m11s/dub-migrate:latest
+            m11s/dub-migrate:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
