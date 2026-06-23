@@ -11,6 +11,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Add swap space
+        run: |
+          sudo fallocate -l 8G /swapfile
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+
       - uses: pnpm/action-setup@v4
         with:
           version: 9.15.9
@@ -29,7 +36,7 @@ jobs:
           NEXTAUTH_SECRET: build-placeholder-secret-32chars!!
           NEXTAUTH_URL: http://localhost:3000
           NEXT_TELEMETRY_DISABLED: 1
-          NODE_OPTIONS: --max-old-space-size=4096
+          NODE_OPTIONS: --max-old-space-size=6144
         run: pnpm turbo build --filter=web
 
       - name: Set up Docker Buildx
