@@ -29,9 +29,18 @@ jobs:
           NEXTAUTH_SECRET: build-placeholder-secret-32chars!!
           NEXTAUTH_URL: http://localhost:3000
           NEXT_TELEMETRY_DISABLED: 1
-          NODE_OPTIONS: --max-old-space-size=6144
-          QSTASH_CURRENT_SIGNING_KEY: build-placeholder
-          QSTASH_NEXT_SIGNING_KEY: build-placeholder
+          NODE_OPTIONS: --max-old-space-size=8192
+          QSTASH_TOKEN: xx
+          QSTASH_CURRENT_SIGNING_KEY: xx
+          QSTASH_NEXT_SIGNING_KEY: xx
+          TINYBIRD_API_KEY: xx
+          TINYBIRD_API_URL: xx
+          ANTHROPIC_API_KEY: xx
+          STRIPE_SECRET_KEY: xx
+          STRIPE_WEBHOOK_SECRET: xx
+          CRON_SECRET: xx
+          UPSTASH_REDIS_REST_URL: http://localhost:6379
+          UPSTASH_REDIS_REST_TOKEN: xx
         run: pnpm turbo build --filter=web
 
       - name: Set up Docker Buildx
