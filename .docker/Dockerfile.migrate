@@ -3,7 +3,7 @@
 # Migration image for self-hosted deployments. This intentionally carries the
 # Prisma schema and CLI, while the runtime image remains a slim Next standalone.
 
-FROM node:22-alpine
+FROM node:22-slim
 
 WORKDIR /app
 

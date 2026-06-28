@@ -11,7 +11,7 @@
 #     pnpm --filter web build
 #   docker build -f .docker/Dockerfile -t dub .
 
-FROM node:22-alpine
+FROM node:22-slim
 
 WORKDIR /app
 
