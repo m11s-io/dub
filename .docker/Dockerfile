@@ -1,16 +1,4 @@
-# syntax=docker/dockerfile:1
-#
-# Pre-built image: build the app locally first, then package with this Dockerfile.
-# CI builds via GitHub Actions (.github/workflows/docker.yml).
-#
-# Manual local build:
-#   pnpm install --frozen-lockfile
-#   DATABASE_URL=mysql://x:x@localhost/x \
-#     NEXTAUTH_SECRET=x NEXTAUTH_URL=http://localhost:3000 \
-#     NEXT_TELEMETRY_DISABLED=1 NODE_OPTIONS="--max-old-space-size=4096" \
-#     pnpm --filter web build
-#   docker build -f .docker/Dockerfile -t dub .
-
+# syntax=docker/dockerfile:1.24@sha256:87999aa3d42bdc6bea60565083ee17e86d1f3339802f543c0d03998580f9cb89
 FROM node:22-slim
 
 WORKDIR /app
