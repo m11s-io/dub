@@ -5,6 +5,7 @@ export const APP_HOSTNAMES = new Set([
   "preview.dub.co",
   "localhost:8888",
   "localhost",
+  ...(process.env.NEXT_PUBLIC_APP_DOMAIN ? [process.env.NEXT_PUBLIC_APP_DOMAIN] : []),
 ]);
 
 export const APP_DOMAIN =
