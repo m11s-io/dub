@@ -67,7 +67,7 @@ jobs:
 
     services:
       mysql:
-        image: mysql:8.0
+        image: mysql:8.0@sha256:7dcddc01f13bab2f15cde676d44d01f61fc9f99fe7785e86196dfc07d358ae2b
         env:
           MYSQL_DATABASE: planetscale
           MYSQL_ROOT_HOST: "%"
@@ -81,7 +81,7 @@ jobs:
           - 3306:3306
 
       mailhog:
-        image: mailhog/mailhog:latest
+        image: mailhog/mailhog:latest@sha256:8d76a3d4ffa32a3661311944007a415332c4bb855657f4f6c57996405c009bea
         ports:
           - 1025:1025
           - 8025:8025
@@ -97,7 +97,7 @@ jobs:
           - 6379:6379
 
       srh:
-        image: hiett/serverless-redis-http:latest
+        image: hiett/serverless-redis-http:latest@sha256:5b0bb9239fce53abf87b2018a7a0deb9ec7bd900c5360738fe5fbeeb426f9150
         env:
           SRH_MODE: env
           SRH_TOKEN: "e2e_srh_token"
@@ -107,7 +107,7 @@ jobs:
 
     steps:
       - name: Check out code
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Start PlanetScale simulator
         run: |
@@ -124,7 +124,7 @@ jobs:
         uses: pnpm/action-setup@v3
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: "pnpm"
@@ -134,7 +134,7 @@ jobs:
 
       - name: Cache Playwright browsers
         id: playwright-cache
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ hashFiles('apps/web/package.json') }}

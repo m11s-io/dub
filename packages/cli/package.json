@@ -56,14 +56,14 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@types/configstore": "^6.0.2",
-    "@types/fs-extra": "^11.0.4",
+    "@types/configstore": "6.0.2",
+    "@types/fs-extra": "11.0.4",
     "@types/node": "18.11.9",
-    "@types/prompts": "^2.4.9",
-    "rimraf": "^5.0.10",
-    "ts-node": "^10.9.2",
-    "tsup": "^6.7.0",
-    "type-fest": "^4.26.1",
-    "typescript": "^5.6.2"
+    "@types/prompts": "2.4.9",
+    "rimraf": "5.0.10",
+    "ts-node": "10.9.2",
+    "tsup": "6.7.0",
+    "type-fest": "4.26.1",
+    "typescript": "5.6.2"
   }
 }
