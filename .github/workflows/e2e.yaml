@@ -3,6 +3,9 @@ name: Public API Tests
 on:
   deployment_status:
 
+permissions:
+  contents: read
+
 jobs:
   api-tests:
     timeout-minutes: 30
@@ -10,13 +13,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out code
-        uses: actions/checkout@v2
+        uses: actions/checkout@0717577d45739eb3c851188b29f50ed6c0b2194e # v2
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@a3252b78c470c02df07e9d59298aecedc3ccdd6d # v3
 
       - name: Setup Node.js environment
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 20
           cache: "pnpm"

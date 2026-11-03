@@ -8,23 +8,27 @@ on:
       - "packages/embeds/core/**"
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   deploy:
+    timeout-minutes: 60
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@a37ce9120846195fa4ece8f58b268e6043cb2f26 # v3
 
       - name: Setup pnpm
-        uses: pnpm/action-setup@v3
+        uses: pnpm/action-setup@a3252b78c470c02df07e9d59298aecedc3ccdd6d # v3
         with:
           version: 8
       - name: Install dependencies & build
         run: pnpm --filter @dub/embed-core build
 
       # - name: Deploy to Cloudflare Pages (https://www.dubcdn.com/embed/script.js)
-      #   uses: cloudflare/wrangler-action@v3
+      #   uses: cloudflare/wrangler-action@9acf94ace14e7dc412b076f2c5c20b8ce93c79cd # v3
       #   with:
       #     apiToken: ${{ secrets.CLOUDFLARE_PAGES_API_KEY }}
       #     accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
