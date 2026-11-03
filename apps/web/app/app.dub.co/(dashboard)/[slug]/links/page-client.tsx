@@ -122,6 +122,7 @@ export function WorkspaceLinksList() {
     if (showedDotLinkModal) return;
 
     // We show the .link offer modal if:
+    // - The workspace is production
     // - The upgraded modal is not open
     // - The user has a paid plan (and valid stripe ID)
     // - The user is not in a billing trial (.link cannot be claimed until trial ends)
@@ -428,13 +429,13 @@ function ImportOption({
       content={
         trialActive ? (
           <TooltipContent
-            title="Your workspace has exceeded its monthly links limit. We're still collecting data on your existing links, but you need to upgrade to create more links."
+            title="Your workspace have exceeded your monthly links limit. We're still collecting data on your existing links, but you need to upgrade to create more links."
             cta="Start paid plan"
             onClick={() => openTrialLimitModal("links")}
           />
         ) : (
           <TooltipContent
-            title="Your workspace has exceeded its monthly links limit. We're still collecting data on your existing links, but you need to upgrade to create more links."
+            title="Your workspace have exceeded your monthly links limit. We're still collecting data on your existing links, but you need to upgrade to create more links."
             cta={nextPlan ? `Upgrade to ${nextPlan.name}` : "Contact support"}
             href={`/${slug}/upgrade`}
           />

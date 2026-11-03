@@ -1,7 +1,6 @@
 "use client";
 
 import useLink from "@/lib/swr/use-link";
-import usePartner from "@/lib/swr/use-partner";
 import useWorkspace from "@/lib/swr/use-workspace";
 import { ExpandedLinkProps } from "@/lib/types";
 import { LinkAnalyticsBadge } from "@/ui/links/link-analytics-badge";
@@ -22,7 +21,6 @@ import {
 } from "@/ui/links/link-builder/link-builder-provider";
 import { LinkCreatorInfo } from "@/ui/links/link-builder/link-creator-info";
 import { LinkFeatureButtons } from "@/ui/links/link-builder/link-feature-buttons";
-import { LinkPartnerDetails } from "@/ui/links/link-builder/link-partner-details";
 import { LinkPreview } from "@/ui/links/link-builder/link-preview";
 import { OptionsList } from "@/ui/links/link-builder/options-list";
 import { QRCodePreview } from "@/ui/links/link-builder/qr-code-preview";
@@ -132,14 +130,10 @@ function LinkBuilder({ link }: { link: ExpandedLinkProps }) {
     enabled: isDirty,
   });
 
-  const { partner, loading: isLoadingPartner } = usePartner({
-    partnerId: link?.partnerId ?? null,
-  });
-
   const [isChangingLink, setIsChangingLink] = useState(false);
 
   return (
-    <div className="flex min-h-[calc(100dvh-var(--page-top-margin)-var(--page-bottom-margin)-1px)] flex-col rounded-t-[inherit] bg-white">
+    <div className="flex min-h-[calc(100dvh-var(--page-banner-height)-var(--page-top-margin)-var(--page-bottom-margin)-1px)] flex-col rounded-t-[inherit] bg-white">
       <div className="py-2 pl-4 pr-5">
         <LinkBuilderHeader
           onSelectLink={(selectedLink) => {
@@ -235,16 +229,6 @@ function LinkBuilder({ link }: { link: ExpandedLinkProps }) {
 
             <OptionsList />
 
-            {/* Partner details */}
-            {(partner || isLoadingPartner) && (
-              <div className="mt-1 flex flex-col gap-2 border-t border-neutral-200 pt-8">
-                <h2 className="text-base font-semibold text-neutral-800">
-                  Partner Details
-                </h2>
-
-                <LinkPartnerDetails link={link} partner={partner} />
-              </div>
-            )}
             {/* Creator info at the bottom (desktop only) */}
             {isDesktop && <LinkCreatorInfo link={link} />}
           </div>
@@ -308,7 +292,7 @@ const Controls = memo(({ link }: { link: ExpandedLinkProps }) => {
 
 function LoadingSkeleton() {
   return (
-    <div className="flex min-h-[calc(100dvh-var(--page-top-margin)-var(--page-bottom-margin)-1px)] flex-col rounded-t-[inherit] bg-white">
+    <div className="flex min-h-[calc(100dvh-var(--page-banner-height)-var(--page-top-margin)-var(--page-bottom-margin)-1px)] flex-col rounded-t-[inherit] bg-white">
       <div className="flex items-center justify-between gap-4 py-2.5 pl-4 pr-5">
         <div className="h-8 w-64 max-w-full animate-pulse rounded-md bg-neutral-100" />
         <div className="h-7 w-32 max-w-full animate-pulse rounded-md bg-neutral-100" />

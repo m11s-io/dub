@@ -8,9 +8,9 @@ import useWorkspace from "@/lib/swr/use-workspace";
 import {
   BlurImage,
   Button,
-  ChartLine,
   DateRangePicker,
   Filter,
+  LinesY,
   SquareLayoutGrid6,
   TooltipContent,
   useMediaQuery,
@@ -41,22 +41,13 @@ export function AnalyticsToggle({
 }: {
   page?: "analytics" | "events";
 }) {
-  const { slug, programSlug } = useParams();
+  const { slug } = useParams();
   const { plan, createdAt } = useWorkspace();
 
   const { queryParams, getQueryString } = useRouterStuff();
 
-  const {
-    domain,
-    key,
-    url,
-    adminPage,
-    partnerPage,
-    dashboardProps,
-    start,
-    end,
-    interval,
-  } = useContext(AnalyticsContext);
+  const { domain, key, url, dashboardProps, start, end, interval } =
+    useContext(AnalyticsContext);
 
   const scrolled = useScroll(120);
 
@@ -71,9 +62,8 @@ export function AnalyticsToggle({
     onRemoveAll,
     onOpenFilter,
     onToggleOperator,
-    streaming,
     activeFiltersWithStreaming,
-  } = useAnalyticsFilters({ partnerPage, dashboardProps });
+  } = useAnalyticsFilters({ dashboardProps });
 
   const hasActiveFilters = activeFiltersWithStreaming.length > 0;
 
@@ -129,21 +119,22 @@ export function AnalyticsToggle({
         });
       }}
       presets={INTERVAL_DISPLAYS.map(({ display, value, shortcut }) => {
-        const requiresUpgrade =
-          partnerPage ||
-          DUB_DEMO_LINKS.find((l) => l.domain === domain && l.key === key)
-            ? false
-            : !validDateRangeForPlan({
-                plan: plan || dashboardProps?.workspacePlan,
-                dataAvailableFrom: createdAt,
-                interval: value,
-                start,
-                end,
-              }).valid;
+        const requiresUpgrade = DUB_DEMO_LINKS.find(
+          (l) => l.domain === domain && l.key === key,
+        )
+          ? false
+          : !validDateRangeForPlan({
+              plan: plan || dashboardProps?.workspacePlan,
+              dataAvailableFrom: createdAt,
+              interval: value,
+              start,
+              end,
+            }).valid;
 
         const { startDate, endDate } = getStartEndDates({
           interval: value,
           dataAvailableFrom: createdAt,
+          timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         });
 
         return {
@@ -164,14 +155,13 @@ export function AnalyticsToggle({
   );
 
   // TODO: [PageContent] Remove once all pages are migrated to the new PageContent
-  const isAppPage = !dashboardProps && !adminPage;
+  const isAppPage = !dashboardProps;
 
   return (
     <>
       <div
         className={cn("py-3 md:py-3", isAppPage && "pt-0 md:pt-0", {
           "sticky top-14 z-10 bg-neutral-50": dashboardProps,
-          "sticky top-16 z-10 bg-neutral-50": adminPage,
           "shadow-md": scrolled && dashboardProps,
           "pb-4 md:pb-4": !hasActiveFilters,
         })}
@@ -242,9 +232,7 @@ export function AnalyticsToggle({
                     {page === "analytics" && (
                       <>
                         <ShareButton />
-                        <Link
-                          href={`/${partnerPage ? `programs/${programSlug}/` : adminPage ? "" : `${slug}/`}events${getQueryString()}`}
-                        >
+                        <Link href={`/${slug}/links/events${getQueryString()}`}>
                           <Button
                             variant="secondary"
                             className="w-fit"
@@ -259,13 +247,13 @@ export function AnalyticsToggle({
                     {page === "events" && (
                       <>
                         <Link
-                          href={`/${partnerPage ? `programs/${programSlug}/` : adminPage ? "" : `${slug}/`}analytics${getQueryString()}`}
+                          href={`/${slug}/links/analytics${getQueryString()}`}
                         >
                           <Button
                             variant="secondary"
                             className="w-fit"
                             icon={
-                              <ChartLine className="h-4 w-4 text-neutral-600" />
+                              <LinesY className="h-4 w-4 text-neutral-600" />
                             }
                             text={isMobile ? undefined : "View Analytics"}
                           />

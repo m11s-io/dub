@@ -1,6 +1,5 @@
 import { SCOPES } from "@/lib/api/tokens/scopes";
 import * as z from "zod/v4";
-import { createPartnerSchema } from "./partners";
 
 // Schema to validate the request body when creating a new token
 export const createTokenSchema = z.object({
@@ -11,7 +10,9 @@ export const createTokenSchema = z.object({
     .min(1)
     .max(50),
   isMachine: z.boolean().optional().default(false),
-  scopes: z.array(z.enum(SCOPES)).default([]).optional(),
+  scopes: z.array(z.enum(SCOPES)).min(1, {
+    error: "Please select at least one scope for this API key.",
+  }),
 });
 
 // Schema to validate the request body when updating a token
@@ -31,33 +32,15 @@ export const tokenSchema = z.object({
     .string()
     .nullable()
     .transform((val) => val?.split(" ") ?? []),
+  expires: z.date().nullable(),
   lastUsed: z.date().nullable(),
   createdAt: z.date(),
   updatedAt: z.date(),
   user: z.object({
     id: z.string(),
     name: z.string().nullable(),
+    email: z.string().nullable(),
     image: z.string().nullable(),
     isMachine: z.boolean(),
   }),
-});
-
-export const createReferralsEmbedTokenSchema = z
-  .object({
-    partnerId: z.string().optional(),
-    tenantId: z.string().optional(),
-    partner: createPartnerSchema.optional(),
-  })
-  .superRefine((data, ctx) => {
-    if (!data.partnerId && !data.tenantId && !data.partner) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "You must provide either partnerId, tenantId, or partner.",
-      });
-    }
-  });
-
-export const ReferralsEmbedTokenSchema = z.object({
-  publicToken: z.string(),
-  expires: z.date(),
 });

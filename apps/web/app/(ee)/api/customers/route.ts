@@ -1,10 +1,10 @@
 import { createId } from "@/lib/api/create-id";
 import { transformCustomer } from "@/lib/api/customers/transform-customer";
 import { DubApiError } from "@/lib/api/errors";
-import { getDefaultProgramIdOrThrow } from "@/lib/api/programs/get-default-program-id-or-throw";
 import { parseRequestBody } from "@/lib/api/utils";
 import { withWorkspace } from "@/lib/auth";
 import { getCustomers } from "@/lib/customers/api/get-customers";
+import { getNormalizedEmail } from "@/lib/email/normalize-email";
 import { generateRandomName } from "@/lib/names";
 import { prisma } from "@/lib/prisma";
 import { isStored, storage } from "@/lib/storage";
@@ -14,7 +14,6 @@ import {
   CustomerSchema,
   getCustomersQuerySchemaExtended,
 } from "@/lib/zod/schemas/customers";
-import { DiscountSchemaWithDeprecatedFields } from "@/lib/zod/schemas/discount";
 import { nanoid, R2_URL } from "@dub/utils";
 import { waitUntil } from "@vercel/functions";
 import { NextResponse } from "next/server";
@@ -24,22 +23,15 @@ export const GET = withWorkspace(
   async ({ workspace, searchParams }) => {
     const filters = getCustomersQuerySchemaExtended.parse(searchParams);
 
-    let { programId, partnerId, includeExpandedFields } = filters;
-
-    if (programId || partnerId) {
-      programId = getDefaultProgramIdOrThrow(workspace);
-    }
+    const { includeExpandedFields } = filters;
 
     const customers = await getCustomers({
       ...filters,
       workspaceId: workspace.id,
-      programId,
     });
 
     const responseSchema = includeExpandedFields
-      ? CustomerEnrichedSchema.extend({
-          discount: DiscountSchemaWithDeprecatedFields,
-        })
+      ? CustomerEnrichedSchema
       : CustomerSchema;
 
     const response = responseSchema
@@ -49,14 +41,8 @@ export const GET = withWorkspace(
     return NextResponse.json(response);
   },
   {
-    requiredPlan: [
-      "business",
-      "business plus",
-      "business extra",
-      "business max",
-      "advanced",
-      "enterprise",
-    ],
+    requiredPermissions: ["customers.read"],
+    requiredPlan: ["business", "advanced", "enterprise"],
   },
 );
 
@@ -79,6 +65,7 @@ export const POST = withWorkspace(
           id: customerId,
           name: finalCustomerName,
           email,
+          normalizedEmail: getNormalizedEmail(email),
           avatar: finalCustomerAvatar,
           externalId,
           stripeCustomerId,
@@ -135,14 +122,7 @@ export const POST = withWorkspace(
     }
   },
   {
-    requiredPlan: [
-      "business",
-      "business plus",
-      "business extra",
-      "business max",
-      "advanced",
-      "enterprise",
-    ],
-    requiredRoles: ["owner", "member"],
+    requiredPermissions: ["customers.write"],
+    requiredPlan: ["business", "advanced", "enterprise"],
   },
 );

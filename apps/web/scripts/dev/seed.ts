@@ -1,24 +1,18 @@
-import { createId } from "@/lib/api/create-id";
 import { hashPassword } from "@/lib/auth/password";
 import { prisma } from "@/lib/prisma";
 import {
   Domain,
   Folder,
   Integration,
-  Partner,
-  PartnerGroup,
-  PartnerGroupDefaultLink,
   Prisma,
-  Program,
   Project,
-  Reward,
   User,
   WorkspaceRole,
 } from "@prisma/client";
 import "dotenv-flow/config";
 import fs from "fs";
 import path from "path";
-import readline from "readline";
+import { assertLocalDatabaseEnv } from "../../playwright/assert-local-database";
 
 type Workspace = Pick<
   Project,
@@ -30,99 +24,32 @@ type Workspace = Pick<
   | "billingCycleStart"
   | "usageLimit"
   | "linksLimit"
-  | "payoutsLimit"
   | "domainsLimit"
   | "tagsLimit"
   | "foldersLimit"
   | "usersLimit"
   | "aiLimit"
-  | "groupsLimit"
-  | "partnersLimit"
-  | "defaultProgramId"
   | "invoicePrefix"
   | "conversionEnabled"
   | "webhookEnabled"
   | "dotLinkClaimed"
-  | "fastDirectDebitPayouts"
+  | "publishableKey"
 >;
 
 type DomainSeed = Pick<Domain, "id" | "slug" | "verified">;
 
 type FolderSeed = Pick<Folder, "id" | "name" | "description" | "accessLevel">;
 
-type RewardSeed = Pick<
-  Reward,
-  | "id"
-  | "programId"
-  | "event"
-  | "type"
-  | "amountInCents"
-  | "amountInPercentage"
-  | "maxDuration"
-  | "description"
-  | "tooltipDescription"
->;
-
-type GroupSeed = Pick<
-  PartnerGroup,
-  | "id"
-  | "name"
-  | "slug"
-  | "color"
-  | "leadRewardId"
-  | "saleRewardId"
-  | "additionalLinks"
-> & {
-  defaultLinks: Pick<PartnerGroupDefaultLink, "url">[];
-};
-
-type ProgramSeed = Omit<
-  Pick<
-    Program,
-    | "id"
-    | "name"
-    | "slug"
-    | "logo"
-    | "defaultFolderId"
-    | "defaultGroupId"
-    | "domain"
-    | "url"
-    | "termsUrl"
-    | "helpUrl"
-    | "supportEmail"
-    | "messagingEnabledAt"
-    | "partnerNetworkEnabledAt"
-  >,
-  "messagingEnabledAt" | "partnerNetworkEnabledAt"
-> & {
-  messagingEnabledAt: string;
-  partnerNetworkEnabledAt: string;
-};
-
 interface WorkspaceUser extends Pick<User, "id" | "name" | "email"> {
   emailVerified: string;
   role: WorkspaceRole;
 }
-
-type PartnerSeed = Pick<
-  Partner,
-  "id" | "name" | "email" | "description" | "country"
-> & {
-  createdAt: string;
-  user: Pick<User, "id" | "name" | "email"> & {
-    emailVerified: string;
-  };
-};
 
 type SeedData = {
   workspace: Workspace;
   users: WorkspaceUser[];
   domains: DomainSeed[];
   folders: FolderSeed[];
-  rewards: RewardSeed[];
-  groups: GroupSeed[];
-  program: ProgramSeed;
-  partners: PartnerSeed[];
   integrations: Omit<
     Integration,
     "id" | "projectId" | "userId" | "createdAt" | "updatedAt"
@@ -247,187 +174,6 @@ const createFolders = async (data: SeedData) => {
   console.log(`Created ${count} folders`);
 };
 
-// Create rewards
-const createRewards = async (data: SeedData) => {
-  const { rewards, program } = data;
-
-  if (!rewards || rewards.length === 0) {
-    console.log("No rewards to insert");
-    return;
-  }
-
-  if (!program) {
-    console.log("Program is required to create rewards");
-    return;
-  }
-
-  const { count } = await prisma.reward.createMany({
-    data: rewards.map((reward) => ({
-      id: reward.id,
-      programId: program.id,
-      event: reward.event,
-      type: reward.type,
-      amountInCents: reward.amountInCents,
-      amountInPercentage: reward.amountInPercentage
-        ? new Prisma.Decimal(reward.amountInPercentage)
-        : null,
-      maxDuration: reward.maxDuration,
-      description: reward.description,
-      tooltipDescription: reward.tooltipDescription,
-    })),
-  });
-
-  console.log(`Created ${count} rewards`);
-};
-
-// Create groups
-const createGroups = async (data: SeedData) => {
-  const { groups, program } = data;
-
-  if (!groups || groups.length === 0) {
-    console.log("No groups to insert");
-    return;
-  }
-
-  if (!program) {
-    console.log("Program is required to create groups");
-    return;
-  }
-
-  const { count } = await prisma.partnerGroup.createMany({
-    data: groups.map((group) => ({
-      id: group.id,
-      programId: program.id,
-      name: group.name,
-      slug: group.slug,
-      color: group.color ?? null,
-      leadRewardId: group.leadRewardId ?? null,
-      saleRewardId: group.saleRewardId ?? null,
-      additionalLinks: group.additionalLinks as Prisma.JsonArray,
-    })),
-  });
-
-  console.log(`Created ${count} groups`);
-
-  const defaultLinks = groups.flatMap((group) =>
-    group.defaultLinks.map((link) => ({
-      groupId: group.id,
-      url: link.url,
-    })),
-  );
-
-  const { count: defaultLinksCount } =
-    await prisma.partnerGroupDefaultLink.createMany({
-      data: defaultLinks.map((link) => ({
-        id: createId({ prefix: "pgdl_" }),
-        programId: program.id,
-        domain: program.domain!,
-        groupId: link.groupId,
-        url: link.url,
-      })),
-    });
-
-  console.log(`Created ${defaultLinksCount} default links`);
-};
-
-// Create program
-const createProgram = async (data: SeedData) => {
-  const { program, workspace } = data;
-
-  if (!program) {
-    console.log("No program to insert");
-    return;
-  }
-
-  const { id } = await prisma.program.create({
-    data: {
-      id: program.id,
-      workspaceId: workspace.id,
-      name: program.name,
-      slug: program.slug,
-      logo: program.logo,
-      defaultFolderId: program.defaultFolderId,
-      defaultGroupId: program.defaultGroupId,
-      domain: program.domain,
-      url: program.url,
-      termsUrl: program.termsUrl,
-      helpUrl: program.helpUrl,
-      supportEmail: program.supportEmail,
-      messagingEnabledAt: new Date(),
-      partnerNetworkEnabledAt: new Date(),
-      addedToMarketplaceAt: new Date(),
-      featuredOnMarketplaceAt: new Date(),
-    },
-  });
-
-  console.log(`Created program ${id}`);
-};
-
-// Create partners
-const createPartners = async (data: SeedData) => {
-  const { partners, program } = data;
-
-  if (!partners || partners.length === 0) {
-    console.log("No partners to insert");
-    return;
-  }
-
-  if (!program) {
-    console.log("Program is required to create partners.");
-    return;
-  }
-
-  const passwordHash = await hashPassword("password");
-
-  // Create users for partners
-  await prisma.user.createMany({
-    data: partners.map((partner) => ({
-      id: partner.user.id,
-      name: partner.user.name,
-      email: partner.user.email,
-      emailVerified: new Date(partner.user.emailVerified),
-      passwordHash,
-      defaultPartnerId: partner.id,
-    })),
-  });
-
-  // Create partners
-  const { count: partnerCount } = await prisma.partner.createMany({
-    data: partners.map((partner) => ({
-      id: partner.id,
-      name: partner.name,
-      email: partner.email,
-      description: partner.description,
-      country: partner.country,
-      createdAt: new Date(partner.createdAt),
-    })),
-  });
-
-  // Create partner users
-  await prisma.partnerUser.createMany({
-    data: partners.map((partner) => ({
-      userId: partner.user.id,
-      partnerId: partner.id,
-      role: "owner",
-      createdAt: new Date(partner.createdAt),
-    })),
-  });
-
-  console.log(`Created ${partnerCount} partners`);
-
-  // Create program enrollments
-  const { count: enrollmentCount } = await prisma.programEnrollment.createMany({
-    data: partners.map((partner) => ({
-      id: createId({ prefix: "pge_" }),
-      partnerId: partner.id,
-      programId: program.id,
-      groupId: program.defaultGroupId,
-    })),
-  });
-
-  console.log(`Created ${enrollmentCount} program enrollments`);
-};
-
 // Create integrations
 const createIntegrations = async (data: SeedData) => {
   const { integrations, workspace } = data;
@@ -456,15 +202,15 @@ const createIntegrations = async (data: SeedData) => {
 const truncate = async () => {
   console.log("Truncating database...\n");
 
-  // First, nullify the defaultProgramId references to break the relation
-  await prisma.project.updateMany({
-    data: {
-      defaultProgramId: null,
-    },
-  });
-
   const tables = [
+    "Job",
+    "jackson_index",
+    "jackson_store",
+    "jackson_ttl",
+    "OAuthCode",
+    "OAuthApp",
     "InstalledIntegration",
+    "FolderWebhook",
     "LinkWebhook",
     "Webhook",
     "UtmTemplate",
@@ -477,43 +223,25 @@ const truncate = async () => {
     "VerificationToken",
     "EmailVerificationToken",
     "NotificationPreference",
+    "UserNotificationPreferences",
     "Integration",
-    "Commission",
-    "PartnerComment",
-    "Payout",
     "Invoice",
     "Customer",
-    "Reward",
-    "DiscountCode",
-    "Discount",
     "FolderAccessRequest",
-    "EmailDomain",
-    "Message",
-    "PartnerGroupDefaultLink",
     "FolderUser",
     "Folder",
     "Link",
-    "Workflow",
-    "BountyGroup",
-    "BountySubmission",
-    "Bounty",
-    "CampaignGroup",
-    "Campaign",
-    "FraudEvent",
-    "FraudEventGroup",
-    "FraudRule",
-    "ActivityLog",
-    "ProgramApplicationEvent",
-    "ProgramApplication",
-    "ProgramEnrollment",
-    "PartnerGroup",
-    "PartnerUser",
-    "Partner",
-    "PartnerInvite",
     "Domain",
+    "Account",
+    "Session",
+    "Dashboard",
     "ProjectUsers",
     "User",
-    "Program",
+    "RegisteredDomain",
+    "DefaultDomains",
+    "ProjectInvite",
+    "SentEmail",
+    "YearInReview",
     "Project",
   ];
 
@@ -547,44 +275,14 @@ const truncate = async () => {
   console.log("Database truncated successfully");
 };
 
-// Ask for confirmation - requires typing "YES DELETE DATA"
-const askConfirmation = (question: string): Promise<boolean> => {
-  const rl = readline.createInterface({
-    input: process.stdin,
-    output: process.stdout,
-  });
-
-  return new Promise((resolve) => {
-    rl.question(
-      `${question}\nType "YES DELETE DATA" to confirm: `,
-      (answer) => {
-        rl.close();
-        resolve(answer === "YES DELETE DATA");
-      },
-    );
-  });
-};
-
 async function main() {
+  assertLocalDatabaseEnv();
+
   // Check for --truncate flag
   // process.argv[0] = node, process.argv[1] = script path, process.argv[2+] = arguments
   const shouldTruncate = process.argv.slice(2).includes("--truncate");
 
   if (shouldTruncate) {
-    console.log(
-      "\n⚠️  WARNING: This will delete ALL data from the database.\n",
-    );
-    console.log("⚠️  Make sure you are NOT on production database!\n");
-    const confirmed = await askConfirmation(
-      "Are you sure you want to delete ALL data from the database?",
-    );
-
-    if (!confirmed) {
-      console.log("\nTruncate canceled. Exiting...");
-      process.exit(0);
-    }
-
-    console.log("\n");
     await truncate();
     console.log("\n");
   }
@@ -595,10 +293,6 @@ async function main() {
   await createUsers(data);
   await createDomains(data);
   await createFolders(data);
-  await createProgram(data);
-  await createRewards(data);
-  await createGroups(data);
-  await createPartners(data);
   await createIntegrations(data);
 }
 

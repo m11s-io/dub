@@ -1,4 +1,4 @@
-export const RESOURCE_KEYS = [
+const RESOURCE_KEYS = [
   "links",
   "workspaces",
   "analytics",
@@ -7,7 +7,7 @@ export const RESOURCE_KEYS = [
   "folders",
   "tokens",
   "webhooks",
-  "groups",
+  "customers",
 ] as const;
 
 export type ResourceKey = (typeof RESOURCE_KEYS)[number];
@@ -18,19 +18,14 @@ export const RESOURCES: {
   description: string;
 }[] = [
   {
+    name: "Customers",
+    key: "customers",
+    description: "Create, read, update, and delete customers",
+  },
+  {
     name: "Links",
     key: "links",
     description: "Create, read, update, and delete links",
-  },
-  {
-    name: "Analytics",
-    key: "analytics",
-    description: "Create and read analytics events",
-  },
-  {
-    name: "Domains",
-    key: "domains",
-    description: "Create, read, update, and delete domains",
   },
   {
     name: "Tags",
@@ -41,5 +36,15 @@ export const RESOURCES: {
     name: "Folders",
     key: "folders",
     description: "Create, read, update, and delete folders",
+  },
+  {
+    name: "Domains",
+    key: "domains",
+    description: "Create, read, update, and delete domains",
+  },
+  {
+    name: "Analytics",
+    key: "analytics",
+    description: "Create and read analytics events",
   },
 ];

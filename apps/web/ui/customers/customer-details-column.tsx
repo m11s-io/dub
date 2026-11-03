@@ -1,5 +1,5 @@
+import useWorkspace from "@/lib/swr/use-workspace";
 import { CustomerActivityResponse, CustomerEnriched } from "@/lib/types";
-import { PartnerAvatar } from "@/ui/partners/partner-avatar";
 import {
   Button,
   CalendarIcon,
@@ -7,6 +7,7 @@ import {
   Envelope,
   Globe,
   Hyperlink,
+  MoneyBill2,
   TimestampTooltip,
   Tooltip,
   UTM_PARAMETERS,
@@ -15,11 +16,11 @@ import {
   capitalize,
   cn,
   COUNTRIES,
+  currencyFormatter,
   getParamsFromURL,
   getPrettyUrl,
 } from "@dub/utils";
 import { Pencil } from "lucide-react";
-import { useParams } from "next/navigation";
 import { Fragment, HTMLProps, useMemo } from "react";
 import { DeviceIcon } from "../analytics/device-icon";
 import { useEditCustomerModal } from "../modals/edit-customer-modal";
@@ -30,16 +31,13 @@ export function CustomerDetailsColumn({
   customer,
   customerActivity,
   isCustomerActivityLoading,
-  isProgramPage = false,
-  workspaceSlug,
 }: {
   customer?: CustomerEnriched;
   customerActivity?: CustomerActivityResponse;
   isCustomerActivityLoading: boolean;
-  isProgramPage?: boolean;
-  workspaceSlug?: string;
 }) {
-  const { programSlug } = useParams<{ programSlug: string }>();
+  const { slug: workspaceSlug } = useWorkspace();
+
   const { EditCustomerModal, openEditCustomerModal } = useEditCustomerModal();
 
   const basicFields = [
@@ -96,9 +94,23 @@ export function CustomerDetailsColumn({
           ),
         }
       : null,
+
+    customer?.saleAmount != null
+      ? {
+          id: "ltv",
+          icon: <MoneyBill2 className="size-3.5 shrink-0" />,
+          text: (
+            <span>
+              LTV:{" "}
+              {currencyFormatter(customer.saleAmount, {
+                trailingZeroDisplay: "stripIfInteger",
+              })}
+            </span>
+          ),
+        }
+      : null,
   ].filter((field): field is NonNullable<typeof field> => field !== null);
 
-  const partner = customer?.partner;
   const link = customerActivity?.link;
   const click = customerActivity?.events.find((e) => e.event === "click");
 
@@ -224,7 +236,7 @@ export function CustomerDetailsColumn({
                             href={
                               value === "Unknown"
                                 ? undefined
-                                : `/${workspaceSlug || `programs/${programSlug}`}/${isProgramPage ? "program/" : ""}analytics?${key}=${encodeURIComponent(value)}`
+                                : `/${workspaceSlug}/links/analytics?${key}=${encodeURIComponent(value)}`
                             }
                             target="_blank"
                           >
@@ -284,11 +296,7 @@ export function CustomerDetailsColumn({
                       <Fragment key={key}>
                         <span className="truncate">{label}</span>
                         <ConditionalLink
-                          href={
-                            workspaceSlug
-                              ? `/${workspaceSlug}/${isProgramPage ? "program/" : ""}analytics?${key}=${encodeURIComponent(value)}`
-                              : undefined
-                          }
+                          href={`/${workspaceSlug}/links/analytics?${key}=${encodeURIComponent(value)}`}
                           target="_blank"
                           className="truncate text-neutral-500"
                         >
@@ -303,56 +311,33 @@ export function CustomerDetailsColumn({
           </div>
         </div>
 
-        {(link || !customer) && (
-          <div className="border-border-subtle rounded-lg border p-4">
-            <h2 className="text-content-emphasis mb-2.5 text-sm font-semibold">
-              Referral {partner ? "partner" : "link"}
+        <div className="border-border-subtle rounded-lg border p-4">
+          <div className="flex flex-col gap-2">
+            <h2 className="text-content-emphasis text-sm font-semibold">
+              Referral link
             </h2>
-
-            {partner && (
-              <div className="mb-4 flex items-center gap-2">
-                <PartnerAvatar partner={partner} className="size-5" />
+            {!customer || isCustomerActivityLoading ? (
+              <div className="h-5 w-12 animate-pulse rounded-md bg-neutral-100" />
+            ) : link ? (
+              <div className="flex items-center gap-1.5 text-xs">
+                <Hyperlink className="size-3.5 shrink-0" />
                 <ConditionalLink
                   href={
                     workspaceSlug
-                      ? `/${workspaceSlug}/program/partners/${partner.id}`
+                      ? `/${workspaceSlug}/links/${link.domain}/${link.key}`
                       : undefined
                   }
                   target="_blank"
-                  className="min-w-0 overflow-hidden truncate text-xs font-semibold"
+                  className="min-w-0 overflow-hidden truncate"
                 >
-                  {partner.name}
+                  {getPrettyUrl(link.shortLink)}
                 </ConditionalLink>
               </div>
+            ) : (
+              <span>-</span>
             )}
-
-            <div className="flex flex-col gap-2 text-xs">
-              {partner && <DetailHeading>Referral link</DetailHeading>}
-              {!customer || isCustomerActivityLoading ? (
-                <div className="h-5 w-12 animate-pulse rounded-md bg-neutral-100" />
-              ) : link ? (
-                <div className="flex items-center gap-1.5">
-                  <Hyperlink className="size-3.5 shrink-0" />
-                  <ConditionalLink
-                    href={
-                      workspaceSlug
-                        ? `/${workspaceSlug}/links/${link.domain}/${link.key}`
-                        : programSlug
-                          ? `/programs/${programSlug}/analytics?linkId=${link.id}`
-                          : undefined
-                    }
-                    target="_blank"
-                    className="min-w-0 overflow-hidden truncate"
-                  >
-                    {getPrettyUrl(link.shortLink)}
-                  </ConditionalLink>
-                </div>
-              ) : (
-                <span>-</span>
-              )}
-            </div>
           </div>
-        )}
+        </div>
       </div>
     </>
   );

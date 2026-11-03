@@ -1,9 +1,8 @@
-import { getPartnerEnrollmentInfo } from "@/lib/planetscale/get-partner-enrollment-info";
+import { getOwnedLinkImageKey } from "@/lib/api/links/get-owned-link-image-key";
 import { prisma } from "@/lib/prisma";
 import { isNotHostedImage, storage } from "@/lib/storage";
 import { recordLink } from "@/lib/tinybird";
 import { LinkProps, ProcessedLinkProps } from "@/lib/types";
-import { propagateWebhookTriggerChanges } from "@/lib/webhook/update-webhook";
 import {
   R2_URL,
   getParamsFromURL,
@@ -68,6 +67,7 @@ export async function updateLink({
     testCompletedAt,
     ...rest
   } = updatedLink;
+
   const changedTestCompletedAt = testCompletedAt !== oldLink.testCompletedAt;
 
   const combinedTagIds = combineTagIds({ tagId, tagIds });
@@ -163,42 +163,23 @@ export async function updateLink({
     },
     include: {
       ...includeTags,
-      // no need to includeProgramEnrollment because we're doing getPartnerEnrollmentInfo below
       webhooks: webhookIds ? true : false,
     },
   });
 
+  const previousImageKey =
+    oldLink.image && oldLink.image !== image
+      ? getOwnedLinkImageKey(oldLink.image, id)
+      : null;
+
   waitUntil(
     (async () => {
-      const { partner, discount } = await getPartnerEnrollmentInfo({
-        programId: response.programId,
-        partnerId: response.partnerId,
-      });
-
       await Promise.allSettled([
         // Record link in Redis
-        linkCache.set({
-          ...response,
-          ...(partner && { partner }),
-          ...(discount && { discount }),
-        }),
+        linkCache.set(response),
 
         // Record link in Tinybird
-        recordLink({
-          ...response,
-          ...(partner && {
-            programEnrollment: {
-              ...(partner?.groupId && {
-                groupId: partner.groupId,
-              }),
-              programPartnerTags: partner?.partnerTagIds.map(
-                (partnerTagId: string) => ({
-                  partnerTagId,
-                }),
-              ),
-            },
-          }),
-        }),
+        recordLink(response),
 
         // If key is changed: delete the old key in Redis
         (changedDomain || changedKey) && linkCache.delete(oldLink),
@@ -216,17 +197,8 @@ export async function updateLink({
             },
           }),
 
-        // If there's a valid old image and it starts with the same link ID but is different from the new image, delete it
-        oldLink.image &&
-          oldLink.image.startsWith(`${R2_URL}/images/${id}`) &&
-          oldLink.image !== image &&
-          storage.delete({ key: oldLink.image.replace(`${R2_URL}/`, "") }),
-
-        // Propagate webhook trigger changes
-        webhookIds != undefined &&
-          propagateWebhookTriggerChanges({
-            webhookIds,
-          }),
+        // Delete the previous preview image when it belongs to this link and is being replaced.
+        previousImageKey && storage.delete({ key: previousImageKey }),
 
         // Schedule AB test completion
         changedTestCompletedAt &&

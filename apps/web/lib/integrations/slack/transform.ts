@@ -1,18 +1,12 @@
 import { isFirstConversion } from "@/lib/analytics/is-first-conversion";
-import { getBountyRewardDescription } from "@/lib/bounty/rewards";
-import { APP_DOMAIN, COUNTRIES, currencyFormatter, truncate } from "@dub/utils";
+import { APP_DOMAIN, COUNTRIES } from "@dub/utils";
 import { LinkWebhookEvent } from "dub/models/components";
 import * as z from "zod/v4";
-import { WebhookTrigger } from "../../types";
 import { webhookPayloadSchema } from "../../webhook/schemas";
+import type { WebhookTrigger } from "../../webhook/types";
 import {
-  BountyEventWebhookPayload,
   ClickEventWebhookPayload,
-  CommissionEventWebhookPayload,
   LeadEventWebhookPayload,
-  PartnerApplicationWebhookPayload,
-  PartnerEventWebhookPayload,
-  PayoutEventWebhookPayload,
   SaleEventWebhookPayload,
 } from "../../webhook/types";
 
@@ -108,14 +102,12 @@ const linkClickedTemplate = ({ data }: { data: ClickEventWebhookPayload }) => {
 };
 
 const leadCreatedTemplate = ({ data }: { data: LeadEventWebhookPayload }) => {
-  const { customer, click, link, partner } = data;
+  const { customer, click, link } = data;
   const hrefToCustomerPage = `${APP_DOMAIN}/customers/${customer.id}`;
-  const hrefToPartnerPage = `${APP_DOMAIN}/program/partners/${partner?.id}`;
   const hrefToLinkPage = `${APP_DOMAIN}/links/${link.domain}/${link.key}`;
 
   const quickLinks = [
     `<${hrefToCustomerPage}|Customer>`,
-    ...(partner ? [`<${hrefToPartnerPage}|Partner>`] : []),
     `<${hrefToLinkPage}|Link>`,
   ];
 
@@ -141,14 +133,6 @@ const leadCreatedTemplate = ({ data }: { data: LeadEventWebhookPayload }) => {
       {
         type: "section",
         fields: [
-          ...(partner
-            ? [
-                {
-                  type: "mrkdwn",
-                  text: `*Partner*\n<${hrefToPartnerPage}|${partner.name}> (<${hrefToPartnerPage}|\`${partner.email}\`>)`,
-                },
-              ]
-            : []),
           {
             type: "mrkdwn",
             text: `*Link*\n<${hrefToLinkPage}|${link.domain}/${link.key}>`,
@@ -169,7 +153,7 @@ const leadCreatedTemplate = ({ data }: { data: LeadEventWebhookPayload }) => {
 };
 
 const saleCreatedTemplate = ({ data }: { data: SaleEventWebhookPayload }) => {
-  const { customer, click, sale, link, partner } = data;
+  const { customer, click, sale, link } = data;
   const amountInDollars = (sale.amount / 100).toFixed(2);
   const isNewSaleType = isFirstConversion({
     customer: {
@@ -179,12 +163,10 @@ const saleCreatedTemplate = ({ data }: { data: SaleEventWebhookPayload }) => {
     linkId: link.id,
   });
   const hrefToCustomerPage = `${APP_DOMAIN}/customers/${customer.id}`;
-  const hrefToPartnerPage = `${APP_DOMAIN}/program/partners/${partner?.id}`;
   const hrefToLinkPage = `${APP_DOMAIN}/links/${link.domain}/${link.key}`;
 
   const quickLinks = [
     `<${hrefToCustomerPage}|Customer>`,
-    ...(partner ? [`<${hrefToPartnerPage}|Partner>`] : []),
     `<${hrefToLinkPage}|Link>`,
   ];
 
@@ -223,14 +205,6 @@ const saleCreatedTemplate = ({ data }: { data: SaleEventWebhookPayload }) => {
       {
         type: "section",
         fields: [
-          ...(partner
-            ? [
-                {
-                  type: "mrkdwn",
-                  text: `*Partner*\n<${hrefToPartnerPage}|${partner.name}> (<${hrefToPartnerPage}|\`${partner.email}\`>)`,
-                },
-              ]
-            : []),
           {
             type: "mrkdwn",
             text: `*Link*\n<${hrefToLinkPage}|${link.domain}/${link.key}>`,
@@ -250,342 +224,6 @@ const saleCreatedTemplate = ({ data }: { data: SaleEventWebhookPayload }) => {
   };
 };
 
-const partnerEnrolledTemplate = ({
-  data,
-}: {
-  data: PartnerEventWebhookPayload;
-}) => {
-  const { name, email, country, companyName, partnerId } = data;
-  const hrefToPartnerPage = `${APP_DOMAIN}/program/partners/${partnerId}`;
-
-  return {
-    blocks: [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `*New partner enrolled* :tada:`,
-        },
-      },
-      {
-        type: "section",
-        fields: [
-          {
-            type: "mrkdwn",
-            text: `*Partner*\n<${hrefToPartnerPage}|${name}> (<${hrefToPartnerPage}|\`${email}\`>)`,
-          },
-          ...(country
-            ? [
-                {
-                  type: "mrkdwn",
-                  text: `*Country*\n:flag-${country.toLowerCase()}: ${COUNTRIES[country]}`,
-                },
-              ]
-            : []),
-          ...(companyName
-            ? [
-                {
-                  type: "mrkdwn",
-                  text: `*Company*\n${companyName}`,
-                },
-              ]
-            : []),
-        ],
-      },
-      {
-        type: "context",
-        elements: [
-          {
-            type: "mrkdwn",
-            text: `View on Dub: <${hrefToPartnerPage}|Partner>`,
-          },
-        ],
-      },
-    ],
-  };
-};
-
-const partnerApplicationSubmittedTemplate = ({
-  data,
-}: {
-  data: PartnerApplicationWebhookPayload;
-}) => {
-  const { partner } = data;
-  const hrefToApplicationPage = `${APP_DOMAIN}/program/partners/applications?partnerId=${partner.id}`;
-
-  return {
-    blocks: [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `*New partner application submitted* :incoming_envelope:`,
-        },
-      },
-      {
-        type: "section",
-        fields: [
-          {
-            type: "mrkdwn",
-            text: `*Name*\n<${hrefToApplicationPage}|${partner.name}> (<${hrefToApplicationPage}|\`${partner.email}\`>)`,
-          },
-          ...(partner.country
-            ? [
-                {
-                  type: "mrkdwn",
-                  text: `*Country*\n:flag-${partner.country.toLowerCase()}: ${COUNTRIES[partner.country]}`,
-                },
-              ]
-            : []),
-          ...(partner.companyName
-            ? [
-                {
-                  type: "mrkdwn",
-                  text: `*Company*\n${partner.companyName}`,
-                },
-              ]
-            : []),
-        ],
-      },
-      {
-        type: "context",
-        elements: [
-          {
-            type: "mrkdwn",
-            text: `View on Dub: <${hrefToApplicationPage}|Application>`,
-          },
-        ],
-      },
-    ],
-  };
-};
-
-const commissionCreatedTemplate = ({
-  data,
-}: {
-  data: CommissionEventWebhookPayload;
-}) => {
-  const { id, amount, earnings, currency, partner, customer, link } = data;
-
-  const formattedAmount = currencyFormatter(amount, { currency });
-  const formattedEarnings = currencyFormatter(earnings, { currency });
-  const hrefToPartnerPage = `${APP_DOMAIN}/program/partners/${partner.id}`;
-  const hrefToCustomerPage = customer
-    ? `${APP_DOMAIN}/customers/${customer.id}`
-    : null;
-  const hrefToLinkPage = link
-    ? `${APP_DOMAIN}/links/${link.domain}/${link.key}`
-    : null;
-  const hrefToCommission = `${APP_DOMAIN}/program/commissions/${id}`;
-
-  const quickLinks = [
-    `<${hrefToCommission}|Commission>`,
-    `<${hrefToPartnerPage}|Partner>`,
-    ...(customer ? [`<${hrefToCustomerPage}|Customer>`] : []),
-    ...(link ? [`<${hrefToLinkPage}|Link>`] : []),
-  ];
-
-  return {
-    blocks: [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: "*New commission created* :tada:",
-        },
-        fields: [
-          {
-            type: "mrkdwn",
-            text: `*Partner*\n<${hrefToPartnerPage}|${partner.name}> (<${hrefToPartnerPage}|\`${partner.email}\`>)`,
-          },
-          ...(customer
-            ? [
-                {
-                  type: "mrkdwn",
-                  text: `*Customer*\n<${hrefToCustomerPage}|${customer.name}> (<${hrefToCustomerPage}|\`${customer.email}\`>)`,
-                },
-              ]
-            : []),
-        ],
-      },
-      {
-        type: "section",
-        fields: [
-          {
-            type: "mrkdwn",
-            text: `*Commission Amount*\n${formattedAmount}`,
-          },
-          {
-            type: "mrkdwn",
-            text: `*Partner Earnings*\n${formattedEarnings}`,
-          },
-        ],
-      },
-      {
-        type: "context",
-        elements: [
-          {
-            type: "mrkdwn",
-            text: `View on Dub: ${quickLinks.join(" | ")}`,
-          },
-        ],
-      },
-    ],
-  };
-};
-
-const bountyTemplates = ({
-  data,
-  event,
-}: {
-  data: BountyEventWebhookPayload;
-  event: WebhookTrigger;
-}) => {
-  const {
-    id,
-    name,
-    description,
-    rewardAmount,
-    rewardDescription,
-    submissionRequirements,
-    type,
-    startsAt,
-    endsAt,
-  } = data;
-
-  const eventMessages = {
-    "bounty.created": "*New bounty created* :money_with_wings:",
-    "bounty.updated": "*Bounty updated* :memo:",
-  };
-
-  const formattedReward = getBountyRewardDescription({
-    rewardAmount,
-    rewardDescription,
-    submissionRequirements,
-  });
-
-  const hrefToBounty = `${APP_DOMAIN}/program/bounties/${id}`;
-
-  return {
-    blocks: [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: eventMessages[event],
-        },
-      },
-      {
-        type: "section",
-        fields: [
-          {
-            type: "mrkdwn",
-            text: `*Bounty Name*\n${truncate(name, 140) || "Untitled Bounty"}`,
-          },
-          {
-            type: "mrkdwn",
-            text: `*Reward*\n${formattedReward}`,
-          },
-        ],
-      },
-      {
-        type: "section",
-        fields: [
-          {
-            type: "mrkdwn",
-            text: `*Type*\n${type.charAt(0).toUpperCase() + type.slice(1)}`,
-          },
-          {
-            type: "mrkdwn",
-            text: `*Duration*\n${new Date(startsAt).toLocaleDateString()}${endsAt ? ` - ${new Date(endsAt).toLocaleDateString()}` : " (No end date)"}`,
-          },
-        ],
-      },
-      ...(description
-        ? [
-            {
-              type: "section",
-              text: {
-                type: "mrkdwn",
-                text: `*Description*\n${truncate(description, 140)}`,
-              },
-            },
-          ]
-        : []),
-      {
-        type: "context",
-        elements: [
-          {
-            type: "mrkdwn",
-            text: `<${hrefToBounty}|View on Dub>`,
-          },
-        ],
-      },
-    ],
-  };
-};
-
-const payoutConfirmedTemplate = ({
-  data,
-}: {
-  data: PayoutEventWebhookPayload;
-}) => {
-  const { id, amount, currency, partner, invoiceId } = data;
-  const formattedAmount = currencyFormatter(amount, { currency });
-  const hrefToPayout = `${APP_DOMAIN}/program/payouts/${id}`;
-
-  return {
-    blocks: [
-      {
-        type: "section",
-        text: {
-          type: "mrkdwn",
-          text: `*Payout confirmed* :money_with_wings:`,
-        },
-      },
-      {
-        type: "section",
-        fields: [
-          {
-            type: "mrkdwn",
-            text: `*Partner*\n${partner.name}`,
-          },
-          {
-            type: "mrkdwn",
-            text: `*Email*\n<mailto:${partner.email}|${partner.email}>`,
-          },
-        ],
-      },
-      {
-        type: "section",
-        fields: [
-          {
-            type: "mrkdwn",
-            text: `*Amount*\n${formattedAmount}`,
-          },
-          ...(invoiceId
-            ? [
-                {
-                  type: "mrkdwn",
-                  text: `*Invoice ID*\n${invoiceId}`,
-                },
-              ]
-            : []),
-        ],
-      },
-      {
-        type: "context",
-        elements: [
-          {
-            type: "mrkdwn",
-            text: `Payout ID: ${id} | <${hrefToPayout}|View on Dub>`,
-          },
-        ],
-      },
-    ],
-  };
-};
-
 const slackTemplates: Record<WebhookTrigger, any> = {
   "link.created": linkTemplates,
   "link.updated": linkTemplates,
@@ -593,12 +231,6 @@ const slackTemplates: Record<WebhookTrigger, any> = {
   "link.clicked": linkClickedTemplate,
   "lead.created": leadCreatedTemplate,
   "sale.created": saleCreatedTemplate,
-  "partner.enrolled": partnerEnrolledTemplate,
-  "partner.application_submitted": partnerApplicationSubmittedTemplate,
-  "commission.created": commissionCreatedTemplate,
-  "bounty.created": bountyTemplates,
-  "bounty.updated": bountyTemplates,
-  "payout.confirmed": payoutConfirmedTemplate,
 };
 
 export const formatEventForSlack = (
@@ -614,10 +246,9 @@ export const formatEventForSlack = (
   const isLinkEvent = ["link.created", "link.updated", "link.deleted"].includes(
     event,
   );
-  const isBountyEvent = ["bounty.created", "bounty.updated"].includes(event);
 
   return template({
     data,
-    ...((isLinkEvent || isBountyEvent) && { event }),
+    ...(isLinkEvent && { event }),
   });
 };

@@ -5,16 +5,11 @@ import { FolderSchema } from "../zod/schemas/folders";
 import { LinkErrorSchema, LinkSchema } from "../zod/schemas/links";
 import { LinkTagSchema } from "../zod/schemas/tags";
 import { analyticsPath } from "./analytics";
-import { bountiesPaths } from "./bounties";
-import { commissionsPaths } from "./commissions";
 import { customersPaths } from "./customers";
 import { domainsPaths } from "./domains";
-import { embedTokensPaths } from "./embed-tokens";
 import { eventsPath } from "./events";
 import { foldersPaths } from "./folders";
 import { linksPaths } from "./links";
-import { partnersPaths } from "./partners";
-import { payoutsPaths } from "./payouts";
 import { qrCodePaths } from "./qr";
 import { openApiErrorResponsesComponents } from "./responses";
 import { tagsPaths } from "./tags";
@@ -25,7 +20,7 @@ export const document = createDocument({
   info: {
     title: "Dub API",
     description:
-      "Dub is the modern link attribution platform for short links, conversion tracking, and affiliate programs.",
+      "Dub is the modern link attribution platform for short links and conversion tracking.",
     version: "0.0.1",
     contact: {
       name: "Dub Support",
@@ -52,12 +47,7 @@ export const document = createDocument({
     ...domainsPaths,
     ...trackPaths,
     ...customersPaths,
-    ...partnersPaths,
-    ...commissionsPaths,
-    ...payoutsPaths,
-    ...embedTokensPaths,
     ...qrCodePaths,
-    ...bountiesPaths,
   },
   components: {
     schemas: {

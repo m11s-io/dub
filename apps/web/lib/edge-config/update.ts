@@ -12,9 +12,9 @@ export const updateConfig = async ({
     | "keys"
     | "whitelist"
     | "emails"
+    | "emailDomainTerms"
     | "reserved"
-    | "reservedUsernames"
-    | "partnersPortal";
+    | "reservedUsernames";
   value: string;
 }) => {
   if (!process.env.EDGE_CONFIG_ID) {

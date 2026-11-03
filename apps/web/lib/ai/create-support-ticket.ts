@@ -1,6 +1,5 @@
 import { createPlainThread } from "@/lib/plain/create-plain-thread";
 import { prisma } from "@/lib/prisma";
-import { currencyFormatter } from "@dub/utils";
 import { ComponentDividerSpacingSize } from "@team-plain/typescript-sdk";
 import { tool } from "ai";
 import { z } from "zod";
@@ -27,8 +26,7 @@ export function createSupportTicketTool(options: CreateSupportTicketOptions) {
       "Creates a support ticket in Plain when the AI cannot resolve the user's issue. Use this when the user explicitly asks to speak with a human, when the issue involves billing disputes, account access problems, or confirmed bugs.",
     inputSchema: z.object({}),
     execute: async () => {
-      const { accountType, selectedWorkspace, selectedProgram, chatLocation } =
-        globalContext;
+      const { selectedWorkspace, chatLocation } = globalContext;
 
       const chatHistory = messages
         .map((msg) => {
@@ -36,14 +34,18 @@ export function createSupportTicketTool(options: CreateSupportTicketOptions) {
             .filter((p) => p.type === "text")
             .map((p) => (p as { type: "text"; text: string }).text)
             .join("");
-          return `${msg.role === "user" ? "User" : "Dub Support"}: ${text}`;
+          const imageCount = msg.parts.filter((p) => p.type === "file").length;
+          const imageNote =
+            imageCount > 0
+              ? `(${imageCount} image${imageCount === 1 ? "" : "s"} attached)`
+              : "";
+          const body = [text, imageNote].filter(Boolean).join(" ");
+          return `${msg.role === "user" ? "User" : "Dub Support"}: ${body}`;
         })
         .join("\n\n");
 
       const { priority, additionalMetadata } = await getPriorityAndMetadata(
-        accountType,
         selectedWorkspace,
-        selectedProgram,
         session.user.id,
       );
 
@@ -124,9 +126,7 @@ export function createSupportTicketTool(options: CreateSupportTicketOptions) {
 }
 
 async function getPriorityAndMetadata(
-  accountType: "workspace" | "partner" | undefined,
   selectedWorkspace: GlobalChatContext["selectedWorkspace"],
-  selectedProgram: GlobalChatContext["selectedProgram"],
   userId: string,
 ): Promise<{
   priority: number;
@@ -135,7 +135,7 @@ async function getPriorityAndMetadata(
   let priority = 3;
   const additionalMetadata: Record<string, string> = {};
 
-  if (accountType === "workspace" && selectedWorkspace?.slug) {
+  if (selectedWorkspace?.slug) {
     const workspace = await prisma.project.findUnique({
       where: {
         slug: selectedWorkspace.slug,
@@ -162,68 +162,6 @@ async function getPriorityAndMetadata(
         "Workspace Slug": workspace.slug,
         "Workspace Plan": workspace.plan,
       });
-    }
-  } else if (accountType === "partner" && selectedProgram?.slug) {
-    try {
-      const [enrollmentResult, payoutsSum] = await Promise.all([
-        prisma.programEnrollment.findFirst({
-          where: {
-            partner: {
-              users: { some: { userId } },
-            },
-            program: { slug: selectedProgram.slug },
-          },
-          include: {
-            program: {
-              include: {
-                groups: { where: { slug: "default" } },
-              },
-            },
-            partnerGroup: true,
-          },
-        }),
-        prisma.payout.aggregate({
-          where: {
-            partner: {
-              users: { some: { userId } },
-            },
-            status: {
-              in: ["processing", "processed", "sent", "completed"],
-            },
-          },
-          _sum: { amount: true },
-        }),
-      ]);
-
-      const partnerLifetimePayouts = payoutsSum._sum?.amount ?? 0;
-
-      if (partnerLifetimePayouts > 10_000_00) {
-        priority = 0;
-      } else if (partnerLifetimePayouts > 1_000_00) {
-        priority = 1;
-      } else if (partnerLifetimePayouts > 100_00) {
-        priority = 2;
-      }
-
-      if (enrollmentResult) {
-        const { program, partnerGroup } = enrollmentResult;
-        const holdingPeriodDays =
-          partnerGroup?.holdingPeriodDays ??
-          program.groups[0]?.holdingPeriodDays ??
-          0;
-        Object.assign(additionalMetadata, {
-          "Program Name": program.name,
-          "Program Slug": program.slug,
-          ...(program.supportEmail
-            ? { "Program Support Email": program.supportEmail }
-            : {}),
-          "Program Holding Period Days": holdingPeriodDays.toString(),
-          "Program Min Payout Amount": program.minPayoutAmount.toString(),
-          "Partner Lifetime Payouts": currencyFormatter(partnerLifetimePayouts),
-        });
-      }
-    } catch {
-      // leave priority at 3 and additionalMetadata empty
     }
   }
 

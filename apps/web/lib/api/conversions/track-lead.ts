@@ -1,13 +1,14 @@
 import { createId } from "@/lib/api/create-id";
+import { getOrCreateCustomer } from "@/lib/api/customers/get-or-create-customer";
 import { DubApiError } from "@/lib/api/errors";
 import { includeTags } from "@/lib/api/links/include-tags";
+import { getNormalizedEmail } from "@/lib/email/normalize-email";
+import { queueGoogleAdsConversionUpload } from "@/lib/integrations/google-ads/upload-conversion";
 import { generateRandomName } from "@/lib/names";
-import { queuePartnerCommissionCreation } from "@/lib/partners/queue-partner-commission-creation";
-import { sendPartnerPostback } from "@/lib/postback/send-partner-postback";
 import { prisma } from "@/lib/prisma";
 import { isStored, storage } from "@/lib/storage";
 import { getClickEvent, recordLead } from "@/lib/tinybird";
-import { CustomerSource, WorkspaceProps } from "@/lib/types";
+import { WorkspaceProps } from "@/lib/types";
 import { redis } from "@/lib/upstash";
 import { sendWorkspaceWebhook } from "@/lib/webhook/publish";
 import { transformLeadEventData } from "@/lib/webhook/transform";
@@ -19,12 +20,9 @@ import { nanoid, R2_URL } from "@dub/utils";
 import { Link } from "@prisma/client";
 import { waitUntil } from "@vercel/functions";
 import * as z from "zod/v4";
-import { syncPartnerLinksStats } from "../partners/sync-partner-links-stats";
-import { executeWorkflows } from "../workflows/execute-workflows";
 
 type TrackLeadParams = z.input<typeof trackLeadRequestSchema> & {
   workspace: Pick<WorkspaceProps, "id" | "stripeConnectId" | "webhookEnabled">;
-  source?: CustomerSource; // default is "tracked"
 };
 
 export const trackLead = async ({
@@ -38,7 +36,6 @@ export const trackLead = async ({
   eventQuantity,
   metadata,
   workspace,
-  source = "tracked",
 }: TrackLeadParams) => {
   // try to find the customer to use if it exists
   let customer = await prisma.customer.findUnique({
@@ -165,10 +162,8 @@ export const trackLead = async ({
         : basePayload;
     };
 
-    // if the customer doesn't exist in our MySQL DB yet, upsert it
-    // (here we're doing upsert and not create in case of race conditions)
     if (!customer) {
-      customer = await prisma.customer.upsert({
+      const { customer: existingOrNewCustomer } = await getOrCreateCustomer({
         where: {
           projectId_externalId: {
             projectId: workspace.id,
@@ -179,19 +174,19 @@ export const trackLead = async ({
           id: finalCustomerId,
           name: finalCustomerName,
           email: customerEmail,
+          normalizedEmail: getNormalizedEmail(customerEmail),
           avatar: finalCustomerAvatar,
           externalId: customerExternalId,
           projectId: workspace.id,
           projectConnectId: workspace.stripeConnectId,
           clickId: clickData.click_id,
           linkId: link.id,
-          programId: link.programId,
-          partnerId: link.partnerId,
           country: clickData.country,
           clickedAt: new Date(clickData.timestamp + "Z"),
         },
-        update: {},
       });
+
+      customer = existingOrNewCustomer;
     }
 
     // if wait mode, record the lead event synchronously
@@ -253,7 +248,6 @@ export const trackLead = async ({
 
         // if not deferred mode, process the following right away:
         // - update link, workspace, and customer stats
-        // - for partner links, create partner commission and execute workflows
         // - send lead.created webhook
 
         if (mode !== "deferred") {
@@ -286,55 +280,6 @@ export const trackLead = async ({
           ]);
           link = updatedLink; // update the link variable to the latest version
 
-          let result: Awaited<
-            ReturnType<typeof queuePartnerCommissionCreation>
-          > | null = null;
-
-          if (link.programId && link.partnerId && customer) {
-            result = await queuePartnerCommissionCreation({
-              event: "lead",
-              programId: link.programId,
-              partnerId: link.partnerId,
-              linkId: link.id,
-              eventId: leadEventId,
-              customerId: customer.id,
-              quantity: eventQuantity ?? 1,
-              context: {
-                customer: {
-                  country: customer.country,
-                  source,
-                },
-              },
-              clickEvent: {
-                url: clickData.url,
-                referer: clickData.referer,
-              },
-            });
-
-            await Promise.allSettled([
-              executeWorkflows({
-                trigger: "partnerMetricsUpdated",
-                reason: "lead",
-                identity: {
-                  workspaceId: workspace.id,
-                  programId: link.programId,
-                  partnerId: link.partnerId,
-                },
-                metrics: {
-                  current: {
-                    leads: 1,
-                  },
-                },
-              }),
-
-              syncPartnerLinksStats({
-                partnerId: link.partnerId,
-                programId: link.programId,
-                eventType: "lead",
-              }),
-            ]);
-          }
-
           await Promise.allSettled([
             sendWorkspaceWebhook({
               trigger: "lead.created",
@@ -343,26 +288,23 @@ export const trackLead = async ({
                 eventName,
                 link,
                 customer,
-                partner: result?.webhookPartner,
                 metadata,
               }),
               workspace,
             }),
 
-            ...(link.partnerId
-              ? [
-                  sendPartnerPostback({
-                    partnerId: link.partnerId,
-                    event: "lead.created",
-                    data: {
-                      ...clickData,
-                      eventName,
-                      link,
-                      customer,
-                    },
-                  }),
-                ]
-              : []),
+            queueGoogleAdsConversionUpload({
+              workspaceId: workspace.id,
+              eventType: "lead",
+              eventId: leadEventId,
+              eventName,
+              conversionDateTime: new Date().toISOString(),
+              conversionCount: eventQuantity ?? undefined,
+              click: {
+                id: clickData.click_id,
+                url: clickData.url,
+              },
+            }),
           ]);
         }
       })(),

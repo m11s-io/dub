@@ -1,26 +1,9 @@
 import "dotenv-flow/config";
 
 import { prisma } from "@/lib/prisma";
-import {
-  DUB_TRIAL_PERIOD_DAYS,
-  getWorkspaceLimitsForStripeSubscriptionStatus,
-  PLANS,
-} from "@dub/utils";
+import { DUB_TRIAL_PERIOD_DAYS, TRIAL_LIMITS } from "@dub/utils";
 import type { Page, Request } from "@playwright/test";
 import type { Prisma } from "@prisma/client";
-
-function getTrialingLimitsForPlan(planId: string) {
-  const planDetails = PLANS.find(
-    (p) => p.name.toLowerCase() === planId.toLowerCase(),
-  );
-  if (!planDetails) {
-    throw new Error(`applyMockTrialToWorkspace: unknown plan "${planId}"`);
-  }
-  return getWorkspaceLimitsForStripeSubscriptionStatus({
-    planLimits: planDetails.limits,
-    subscriptionStatus: "trialing",
-  });
-}
 
 const MOCK_CHECKOUT_SESSION_ID = "cs_test_e2e_mock_session";
 
@@ -83,15 +66,10 @@ const mockTrialWorkspaceColumns = {
   stripeId: true,
   usageLimit: true,
   linksLimit: true,
-  payoutsLimit: true,
   domainsLimit: true,
   aiLimit: true,
   tagsLimit: true,
-  partnerTagsLimit: true,
   foldersLimit: true,
-  groupsLimit: true,
-  networkInvitesLimit: true,
-  partnersLimit: true,
   usersLimit: true,
   paymentFailedAt: true,
 } as const;
@@ -126,15 +104,10 @@ export async function restoreWorkspaceBillingTrialSnapshot(
       stripeId: snapshot.stripeId,
       usageLimit: snapshot.usageLimit,
       linksLimit: snapshot.linksLimit,
-      payoutsLimit: snapshot.payoutsLimit,
       domainsLimit: snapshot.domainsLimit,
       aiLimit: snapshot.aiLimit,
       tagsLimit: snapshot.tagsLimit,
-      partnerTagsLimit: snapshot.partnerTagsLimit,
       foldersLimit: snapshot.foldersLimit,
-      groupsLimit: snapshot.groupsLimit,
-      networkInvitesLimit: snapshot.networkInvitesLimit,
-      partnersLimit: snapshot.partnersLimit,
       usersLimit: snapshot.usersLimit,
       paymentFailedAt: snapshot.paymentFailedAt,
     },
@@ -148,7 +121,7 @@ export async function applyMockTrialToWorkspace(
 ) {
   const plan = (options?.plan ?? "business").toLowerCase();
   const period = options?.period ?? "monthly";
-  const limits = getTrialingLimitsForPlan(plan);
+  const limits = TRIAL_LIMITS;
 
   const trialEndsAt = new Date();
   trialEndsAt.setDate(trialEndsAt.getDate() + DUB_TRIAL_PERIOD_DAYS);
@@ -166,15 +139,10 @@ export async function applyMockTrialToWorkspace(
       stripeId: `cus_e2e_mock_${slug}`,
       usageLimit: limits.clicks,
       linksLimit: limits.links,
-      payoutsLimit: limits.payouts,
       domainsLimit: limits.domains,
       aiLimit: limits.ai,
       tagsLimit: limits.tags,
-      partnerTagsLimit: limits.partnerTags,
       foldersLimit: limits.folders,
-      groupsLimit: limits.groups,
-      networkInvitesLimit: limits.networkInvites,
-      partnersLimit: limits.partners,
       usersLimit: limits.users,
       paymentFailedAt: null,
     },

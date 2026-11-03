@@ -11,6 +11,7 @@ export type WorkspaceSummary = {
   logo?: string | null;
 };
 
+// TODO: consolidate with WorkspaceSelector
 export function WorkspaceCombobox({
   workspaces,
   selectedSlug,
@@ -86,9 +87,11 @@ export function WorkspaceCombobox({
           <div className="size-3.5 animate-pulse rounded-full bg-neutral-200" />
           <div className="h-3.5 w-24 animate-pulse rounded bg-neutral-200" />
         </div>
-      ) : (
-        selected?.label
-      )}
+      ) : selected ? (
+        <span className="flex w-full min-w-0 items-center gap-1.5">
+          <span className="min-w-0 truncate">{selected.label}</span>
+        </span>
+      ) : null}
     </Combobox>
   );
 }

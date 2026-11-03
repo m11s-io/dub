@@ -3,14 +3,9 @@ import {
   isDomainRegistrationInvoice,
   parseRegisteredDomainSlugs,
 } from "@/lib/api/domains/is-domain-registration-invoice";
-import { qstash } from "@/lib/cron";
-import { setRenewOption } from "@/lib/dynadot/set-renew-option";
+import { dispatchWorkflows } from "@/lib/jobs/publish-workflows";
 import { prisma } from "@/lib/prisma";
-import { sendBatchEmail } from "@dub/email";
-import DomainRenewed from "@dub/email/templates/domain-renewed";
-import { APP_DOMAIN_WITH_NGROK, pluralize } from "@dub/utils";
 import { Invoice } from "@prisma/client";
-import { addDays, startOfDay } from "date-fns";
 import Stripe from "stripe";
 
 export async function chargeSucceeded(event: Stripe.ChargeSucceededEvent) {
@@ -68,45 +63,11 @@ export async function chargeSucceeded(event: Stripe.ChargeSucceededEvent) {
     },
   });
 
-  if (invoice.type === "partnerPayout") {
-    return await processPayoutInvoice({ invoice });
-  } else if (invoice.type === "domainRenewal") {
+  if (invoice.type === "domainRenewal") {
     return await processDomainRenewalInvoice({ invoice });
   }
 
   return `Unsupported invoice type (${invoice.type}), skipping...`;
-}
-
-async function processPayoutInvoice({ invoice }: { invoice: Invoice }) {
-  const payoutsToProcess = await prisma.payout.count({
-    where: {
-      invoiceId: invoice.id,
-      status: {
-        not: "completed",
-      },
-    },
-  });
-
-  if (payoutsToProcess === 0) {
-    return `No payouts to process found for invoice ${invoice.id}, skipping...`;
-  }
-
-  const qstashResponse = await qstash.publishJSON({
-    url: `${APP_DOMAIN_WITH_NGROK}/api/cron/payouts/charge-succeeded`,
-    flowControl: {
-      key: invoice.id,
-      rate: 1,
-    },
-    body: {
-      invoiceId: invoice.id,
-    },
-  });
-
-  if (qstashResponse.messageId) {
-    return `Message sent to Qstash with id ${qstashResponse.messageId}`;
-  } else {
-    return `Error sending message to Qstash: ${JSON.stringify(qstashResponse)}`;
-  }
 }
 
 async function processDomainRenewalInvoice({ invoice }: { invoice: Invoice }) {
@@ -139,70 +100,22 @@ async function processDomainRenewalInvoice({ invoice }: { invoice: Invoice }) {
     return `No domains found for invoice ${invoice.id}, skipping...`;
   }
 
-  const earliestExpiresAt = domains[0].expiresAt;
-  const todayStart = startOfDay(new Date());
-  const renewalBase =
-    earliestExpiresAt > todayStart ? earliestExpiresAt : todayStart;
-  const newExpiresAt = addDays(renewalBase, 365);
-
-  await prisma.registeredDomain.updateMany({
-    where: {
-      id: {
-        in: domains.map(({ id }) => id),
-      },
+  const { results } = await dispatchWorkflows({
+    name: "renew-domains-workflow",
+    payload: {
+      invoiceId: invoice.id,
     },
-    data: {
-      expiresAt: newExpiresAt,
-      autoRenewalDisabledAt: null,
+    options: {
+      deduplicationId: `domain-renewal-${invoice.id}`,
+      label: invoice.id,
     },
   });
 
-  await Promise.allSettled(
-    domains.map((domain) =>
-      setRenewOption({
-        domain: domain.slug,
-        autoRenew: true,
-      }),
-    ),
-  );
+  const [result] = results;
 
-  const workspace = await prisma.project.findUniqueOrThrow({
-    where: {
-      id: invoice.workspaceId,
-    },
-    include: {
-      users: {
-        where: {
-          role: "owner",
-        },
-        select: {
-          user: true,
-        },
-      },
-    },
-  });
-
-  const workspaceOwners = workspace.users.filter(({ user }) => user.email);
-
-  if (workspaceOwners.length === 0) {
-    return "No users found to send domain renewal success email.";
+  if (result?.status === "published") {
+    return `Renew domains workflow triggered for invoice ${invoice.id}`;
+  } else {
+    return `Error triggering renew domains workflow for invoice ${invoice.id}: ${result?.lastError}`;
   }
-
-  await sendBatchEmail(
-    workspaceOwners.map(({ user }) => ({
-      variant: "notifications",
-      to: user.email!,
-      subject: `Your ${pluralize("domain", domains.length)} ${domains.length === 1 ? "has" : "have"} been renewed`,
-      react: DomainRenewed({
-        email: user.email!,
-        workspace: {
-          slug: workspace.slug,
-        },
-        domains: domains.map(({ slug }) => ({ slug })),
-        expiresAt: newExpiresAt,
-      }),
-    })),
-  );
-
-  return `Domain renewal success email sent to ${workspaceOwners.length} users.`;
 }

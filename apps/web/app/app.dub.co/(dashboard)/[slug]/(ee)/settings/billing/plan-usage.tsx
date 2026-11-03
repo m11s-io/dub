@@ -2,9 +2,12 @@
 
 import { clientAccessCheck } from "@/lib/client-access-check";
 import { MEGA_WORKSPACE_LINKS_LIMIT } from "@/lib/constants/misc";
-import useGroupsCount from "@/lib/swr/use-groups-count";
+import { testIds } from "@/lib/e2e/test-ids";
 import { useLinkTagsCount } from "@/lib/swr/use-link-tags-count";
-import { useUsageTimeseries } from "@/lib/swr/use-usage-timeseries";
+import {
+  UsageResource,
+  useUsageTimeseries,
+} from "@/lib/swr/use-usage-timeseries";
 import useWorkspace from "@/lib/swr/use-workspace";
 import useWorkspaceUsers from "@/lib/swr/use-workspace-users";
 import { useConfirmModal } from "@/ui/modals/confirm-modal";
@@ -13,6 +16,7 @@ import { useStartPaidPlanModal } from "@/ui/modals/start-paid-plan-modal";
 import SubscriptionMenu from "@/ui/workspaces/subscription-menu";
 import {
   AnimatedSizeContainer,
+  Badge,
   Button,
   DynamicTooltipWrapper,
   Icon,
@@ -20,8 +24,6 @@ import {
   useRouterStuff,
 } from "@dub/ui";
 import {
-  CirclePercentage,
-  CreditCard,
   CrownSmall,
   CursorRays,
   Folder5,
@@ -29,20 +31,19 @@ import {
   Hyperlink,
   Tag,
   Users,
-  Users6,
 } from "@dub/ui/icons";
 import {
   capitalize,
   cn,
-  getFirstAndLastDay,
+  getBillingPeriodBounds,
   INFINITY_NUMBER,
-  isLegacyBusinessPlan,
   isWorkspaceBillingTrialActive,
   nFormatter,
+  sleep,
 } from "@dub/utils";
 import NumberFlow from "@number-flow/react";
 import Link from "next/link";
-import { CSSProperties, ReactNode, useMemo } from "react";
+import { ComponentProps, CSSProperties, ReactNode, useMemo } from "react";
 import { toast } from "sonner";
 import { UsageChart } from "./usage-chart";
 
@@ -58,28 +59,21 @@ export default function PlanUsage() {
     linksUsage,
     linksLimit,
     totalLinks,
-    payoutsUsage,
-    payoutsLimit,
-    payoutFee,
-    payoutFeeWaiverLimit,
-    payoutFeeWaiverUsage,
     domains,
     domainsLimit,
     foldersUsage,
     foldersLimit,
-    partnersUsage,
-    partnersLimit,
-    groupsLimit,
     tagsLimit,
     usersLimit,
     billingCycleStart,
+    planPeriod,
     trialEndsAt,
     subscriptionCanceledAt,
     billingCycleEndsAt,
     mutate,
   } = useWorkspace();
 
-  const permissionsError = clientAccessCheck({
+  const managePlanError = clientAccessCheck({
     action: "billing.write",
     role,
   }).error;
@@ -90,43 +84,51 @@ export default function PlanUsage() {
   const { data: tags } = useLinkTagsCount();
   const { users } = useWorkspaceUsers();
 
-  const { groupsCount } = useGroupsCount();
-
-  const [billingStart, billingEnd] = useMemo(() => {
+  const [billingStart, billingEnd, billingPeriodLabel] = useMemo(() => {
     if (billingCycleStart) {
-      const { firstDay, lastDay } = getFirstAndLastDay(billingCycleStart);
-      const start = firstDay.toLocaleDateString("en-us", {
+      const { start, displayEnd } = getBillingPeriodBounds({
+        planPeriod,
+        billingCycleStart,
+        billingCycleEndsAt,
+      });
+      const startFormatted = start.toLocaleDateString("en-us", {
         month: "short",
         day: "numeric",
         year: "numeric",
       });
-      const end = lastDay.toLocaleDateString("en-us", {
+      const endFormatted = displayEnd.toLocaleDateString("en-us", {
         month: "short",
         day: "numeric",
         year: "numeric",
       });
-      return [start, end];
+      const label =
+        planPeriod === "yearly" && billingCycleEndsAt
+          ? "Current billing period"
+          : "Current billing cycle";
+
+      return [startFormatted, endFormatted, label];
     }
     return [];
-  }, [billingCycleStart]);
+  }, [billingCycleStart, planPeriod, billingCycleEndsAt]);
 
   const usageTabs = useMemo(() => {
-    const tabs = [
-      {
-        resource: "events" as const,
-        icon: CursorRays,
-        title: "Events tracked",
-        usage: usage,
-        limit: usageLimit,
-      },
-      {
-        resource: "links" as const,
-        icon: Hyperlink,
-        title: "Links created",
-        usage: linksUsage,
-        limit: linksLimit,
-      },
-    ];
+    const tabs: Omit<ComponentProps<typeof UsageTabCard>, "managePlanError">[] =
+      [
+        {
+          resource: "events",
+          icon: CursorRays,
+          title: "Events tracked",
+          usage: usage,
+          limit: usageLimit,
+        },
+        {
+          resource: "links",
+          icon: Hyperlink,
+          title: "Links created",
+          usage: linksUsage,
+          limit: linksLimit,
+        },
+      ];
     if (totalLinks && totalLinks > MEGA_WORKSPACE_LINKS_LIMIT) {
       // Find the links tab and move it to the first position
       const linksTabIndex = tabs.findIndex((tab) => tab.resource === "links");
@@ -137,33 +139,6 @@ export default function PlanUsage() {
     }
     return tabs;
   }, [usage, usageLimit, linksUsage, linksLimit, totalLinks]);
-
-  // Display the payout fee in a readable format
-  const payoutFeeDisplay = useMemo((): ReactNode => {
-    if (!plan || payoutFee === undefined) return undefined;
-
-    const hasTieredPricing = payoutFeeWaiverLimit && payoutFeeWaiverLimit > 0;
-    const hasWaiverRemaining =
-      payoutFeeWaiverUsage !== undefined &&
-      payoutFeeWaiverUsage < payoutFeeWaiverLimit!;
-
-    if (hasTieredPricing && hasWaiverRemaining) {
-      const waiverLimitFormatted = nFormatter(payoutFeeWaiverLimit / 100, {
-        full: payoutFeeWaiverLimit < 100000,
-      });
-
-      return (
-        <>
-          <span className="text-neutral-400 line-through">
-            {payoutFee * 100}%
-          </span>{" "}
-          0% for the first ${waiverLimitFormatted}
-        </>
-      );
-    }
-
-    return `${payoutFee * 100}%`;
-  }, [plan, payoutFee, payoutFeeWaiverLimit, payoutFeeWaiverUsage]);
 
   const pendingCancellationEndDate =
     subscriptionCanceledAt && billingCycleEndsAt && plan !== "free" && stripeId
@@ -180,7 +155,7 @@ export default function PlanUsage() {
 
       if (res.ok) {
         // sleep for 2 seconds to make sure Stripe webhook was received, and then mutate
-        await new Promise((resolve) => setTimeout(resolve, 2000));
+        await sleep(2000);
         await mutate();
         toast.success("Your subscription will continue as normal.");
       } else {
@@ -250,7 +225,10 @@ export default function PlanUsage() {
         ) : trialEndsAt != null &&
           isWorkspaceBillingTrialActive(trialEndsAt) ? (
           <div className="mx-1 mt-1 flex items-center justify-center rounded-lg bg-blue-50/50 px-3 py-2">
-            <p className="text-xs font-medium text-blue-600">
+            <p
+              className="text-xs font-medium text-blue-600"
+              data-testid={testIds.billing.trialBanner}
+            >
               Trial ends on{" "}
               <span className="font-semibold">
                 {new Date(trialEndsAt).toLocaleDateString("en-US", {
@@ -266,16 +244,16 @@ export default function PlanUsage() {
 
         <div className="flex flex-col items-start justify-between gap-y-4 p-6 md:px-8 lg:flex-row">
           <div>
-            <h2 className="text-xl font-medium">
-              {plan && isLegacyBusinessPlan({ plan, partnersLimit })
-                ? "Business (Legacy)"
-                : capitalize(plan)}{" "}
-              Plan
+            <h2 className="flex items-center gap-2 text-xl font-medium">
+              <span>{capitalize(plan)} Plan</span>
+              {planPeriod && (
+                <Badge variant="gray">{capitalize(planPeriod)}</Badge>
+              )}
             </h2>
             {billingStart && billingEnd && (
               <p className="mt-1.5 text-balance text-sm font-medium leading-normal text-neutral-700">
                 <>
-                  Current billing cycle:{" "}
+                  {billingPeriodLabel}:{" "}
                   <span className="font-normal">
                     {billingStart} - {billingEnd}
                   </span>
@@ -292,39 +270,55 @@ export default function PlanUsage() {
               ) : isWorkspaceBillingTrialActive(trialEndsAt) ? (
                 <DynamicTooltipWrapper
                   tooltipProps={
-                    permissionsError ? { content: permissionsError } : undefined
+                    managePlanError ? { content: managePlanError } : undefined
                   }
                 >
                   <Button
                     text="Start paid plan"
                     variant="primary"
                     className="h-9"
-                    disabled={Boolean(permissionsError)}
+                    disabled={Boolean(managePlanError)}
                     onClick={() => setShowStartPaidPlanModal(true)}
+                    data-testid={testIds.billing.startPaidPlan}
                   />
                 </DynamicTooltipWrapper>
               ) : showPendingCancellation ? (
                 <DynamicTooltipWrapper
                   tooltipProps={
-                    permissionsError ? { content: permissionsError } : undefined
+                    managePlanError ? { content: managePlanError } : undefined
                   }
                 >
                   <Button
                     text="Resume subscription"
                     variant="primary"
                     className="h-9"
-                    disabled={Boolean(permissionsError)}
+                    disabled={Boolean(managePlanError)}
                     onClick={() => setShowResubscribeModal(true)}
                   />
                 </DynamicTooltipWrapper>
               ) : (
-                <Link href={`/${slug}/settings/billing/upgrade`}>
-                  <Button
-                    text="Manage plan"
-                    variant="primary"
-                    className="h-9"
-                  />
-                </Link>
+                <DynamicTooltipWrapper
+                  tooltipProps={
+                    managePlanError ? { content: managePlanError } : undefined
+                  }
+                >
+                  {managePlanError ? (
+                    <Button
+                      text="Manage plan"
+                      variant="primary"
+                      className="h-9"
+                      disabled
+                    />
+                  ) : (
+                    <Link href={`/${slug}/settings/billing/upgrade`}>
+                      <Button
+                        text="Manage plan"
+                        variant="primary"
+                        className="h-9"
+                      />
+                    </Link>
+                  )}
+                </DynamicTooltipWrapper>
               ))}
 
             <Link
@@ -342,6 +336,11 @@ export default function PlanUsage() {
                 }
                 variant="secondary"
                 className="h-9"
+                data-testid={
+                  isWorkspaceBillingTrialActive(trialEndsAt)
+                    ? testIds.billing.viewPlans
+                    : undefined
+                }
               />
             </Link>
 
@@ -350,9 +349,18 @@ export default function PlanUsage() {
         </div>
         <div className="grid grid-cols-[minmax(0,1fr)] divide-y divide-neutral-200 border-t border-neutral-200">
           <div>
-            <div className="grid gap-4 p-6 pb-0 sm:grid-cols-2 md:p-8 md:pb-0 lg:gap-6">
+            <div
+              className={cn(
+                "grid gap-4 p-6 pb-0 sm:grid-cols-2 md:p-8 md:pb-0 lg:gap-6",
+                usageTabs.length > 2 && "lg:grid-cols-3",
+              )}
+            >
               {usageTabs.map((tab) => (
-                <UsageTabCard key={tab.resource} {...tab} />
+                <UsageTabCard
+                  key={tab.resource}
+                  {...tab}
+                  managePlanError={managePlanError}
+                />
               ))}
             </div>
             <div className="w-full px-2 pb-8 md:px-8">
@@ -361,7 +369,7 @@ export default function PlanUsage() {
           </div>
           <div
             className={cn(
-              "grid grid-cols-1 gap-[1px] overflow-hidden rounded-b-lg bg-neutral-200 md:grid-cols-3",
+              "grid grid-cols-1 gap-[1px] overflow-hidden rounded-b-xl bg-neutral-200 md:grid-cols-3",
               "md:grid-cols-2 lg:grid-cols-2 xl:grid-cols-4",
             )}
           >
@@ -394,36 +402,6 @@ export default function PlanUsage() {
               href={`/${slug}/settings/people`}
             />
           </div>
-          <div className="grid grid-cols-1 gap-[1px] overflow-hidden rounded-b-xl bg-neutral-200 md:grid-cols-4">
-            <UsageCategory
-              title="Partners"
-              icon={Users}
-              usage={partnersUsage}
-              usageLimit={partnersLimit}
-              href={`/${slug}/program/partners`}
-            />
-            <UsageCategory
-              title="Partner groups"
-              icon={Users6}
-              usage={groupsCount ?? 0}
-              usageLimit={groupsLimit}
-              href={`/${slug}/program/groups`}
-            />
-            <UsageCategory
-              title="Partner payouts"
-              icon={CreditCard}
-              usage={payoutsUsage}
-              usageLimit={payoutsLimit}
-              unit="$"
-              href={`/${slug}/program/payouts?status=pending`}
-            />
-            <UsageCategory
-              title="Payout fees"
-              icon={CirclePercentage}
-              usage={payoutFeeDisplay}
-              href="https://dub.co/help/article/partner-payouts#payout-fees-and-timing"
-            />
-          </div>
         </div>
       </div>
     </>
@@ -438,21 +416,19 @@ function UsageTabCard({
   limit: limitProp,
   unit,
   requiresUpgrade,
+  managePlanError,
 }: {
-  resource: "links" | "events";
+  resource: UsageResource;
   icon: Icon;
   title: string;
   usage?: number;
   limit?: number;
   unit?: string;
   requiresUpgrade?: boolean;
+  managePlanError: string | boolean;
 }) {
   const { queryParams, searchParamsObj } = useRouterStuff();
   const { slug, plan } = useWorkspace();
-
-  const { ManageUsageModal, setShowManageUsageModal } = useManageUsageModal({
-    type: resource,
-  });
 
   const hasActiveFilters = useMemo(() => {
     return !!(
@@ -473,20 +449,11 @@ function UsageTabCard({
     return acc;
   }, 0);
 
-  const [usage, limit] =
-    unit === "$" && usageProp !== undefined && limitProp !== undefined
-      ? [
-          (hasActiveFilters && filteredUsage !== undefined
-            ? filteredUsage
-            : usageProp) / 100,
-          limitProp / 100,
-        ]
-      : [
-          hasActiveFilters && filteredUsage !== undefined
-            ? filteredUsage
-            : usageProp,
-          limitProp,
-        ];
+  const rawUsage =
+    hasActiveFilters && filteredUsage !== undefined ? filteredUsage : usageProp;
+  const divisor = unit === "$" ? 100 : 1;
+  const usage = rawUsage !== undefined ? rawUsage / divisor : undefined;
+  const limit = limitProp !== undefined ? limitProp / divisor : undefined;
 
   const loading = usage === undefined || limit === undefined;
   const unlimited = limitProp !== undefined && limitProp >= INFINITY_NUMBER;
@@ -497,7 +464,6 @@ function UsageTabCard({
 
   return (
     <div className="relative">
-      <ManageUsageModal />
       <button
         className={cn(
           "w-full rounded-lg border border-neutral-300 bg-white px-4 py-3 text-left transition-colors duration-75",
@@ -538,7 +504,7 @@ function UsageTabCard({
             </Tooltip>
           )}
         </div>
-        <div className="mt-1.5">
+        <div className="mt-1.5 flex h-6 items-center">
           {!loading ? (
             <NumberFlow
               value={usage}
@@ -558,7 +524,7 @@ function UsageTabCard({
               }
             />
           ) : (
-            <div className="h-5 w-16 animate-pulse rounded-md bg-neutral-200" />
+            <div className="h-6 w-16 animate-pulse rounded-md bg-neutral-200" />
           )}
         </div>
         <AnimatedSizeContainer height>
@@ -608,17 +574,51 @@ function UsageTabCard({
           )}
         </AnimatedSizeContainer>
       </button>
-      {["links", "events"].includes(resource) && plan !== "enterprise" && (
-        <div className="absolute right-3 top-3">
-          <Button
-            onClick={() => setShowManageUsageModal(true)}
-            text={warning ? "Upgrade" : "Manage"}
-            variant={warning ? "primary" : "secondary"}
-            className="h-6 px-1.5 text-xs"
-          />
-        </div>
+      {plan !== "enterprise" && (
+        <ManageUsageButton
+          type={resource}
+          warning={warning}
+          managePlanError={managePlanError}
+        />
       )}
     </div>
+  );
+}
+
+function ManageUsageButton({
+  type,
+  warning,
+  managePlanError,
+}: {
+  type: "links" | "events";
+  warning: boolean;
+  managePlanError: string | boolean;
+}) {
+  const { ManageUsageModal, setShowManageUsageModal } = useManageUsageModal({
+    type,
+  });
+
+  return (
+    <>
+      <ManageUsageModal />
+      <div className="absolute right-3 top-3">
+        <DynamicTooltipWrapper
+          tooltipProps={
+            managePlanError ? { content: managePlanError } : undefined
+          }
+        >
+          <span className="inline-flex">
+            <Button
+              onClick={() => setShowManageUsageModal(true)}
+              text={warning ? "Upgrade" : "Manage"}
+              variant={warning ? "primary" : "secondary"}
+              className="h-6 px-1.5 text-xs"
+              disabled={Boolean(managePlanError)}
+            />
+          </span>
+        </DynamicTooltipWrapper>
+      </div>
+    </>
   );
 }
 

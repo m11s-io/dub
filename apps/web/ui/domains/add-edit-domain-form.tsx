@@ -1,4 +1,5 @@
 import { isValidDomain } from "@/lib/api/domains/is-valid-domain";
+import { testIds } from "@/lib/e2e/test-ids";
 import { mutatePrefix } from "@/lib/swr/mutate";
 import useWorkspace from "@/lib/swr/use-workspace";
 import { DomainProps } from "@/lib/types";
@@ -119,13 +120,15 @@ export function AddEditDomainForm({
   onSuccess,
   enableDomainConfig = true,
   initialDomain,
-  fixedDomainSuffix,
+  submitTestId,
+  domainInputTestId,
 }: {
   props?: DomainProps;
   onSuccess?: (data: DomainProps) => void;
   enableDomainConfig?: boolean;
-  fixedDomainSuffix?: string;
   initialDomain?: string;
+  submitTestId?: string;
+  domainInputTestId?: string;
 }) {
   const { id: workspaceId, plan } = useWorkspace();
   const [lockDomain, setLockDomain] = useState(true);
@@ -140,19 +143,18 @@ export function AddEditDomainForm({
     Record<string, boolean>
   >({});
 
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
   const {
     register,
     control,
     handleSubmit,
     watch,
     setValue,
-    formState: { isSubmitting, isSubmitSuccessful, isDirty },
+    formState: { isDirty },
   } = useForm<FormData>({
     defaultValues: {
-      slug:
-        props?.slug ||
-        initialDomain ||
-        (fixedDomainSuffix ? `.${fixedDomainSuffix}` : ""),
+      slug: props?.slug || initialDomain || "",
       logo: props?.logo,
       expiredUrl: props?.expiredUrl,
       notFoundUrl: props?.notFoundUrl,
@@ -201,13 +203,6 @@ export function AddEditDomainForm({
   }, []);
 
   const domain = watch("slug");
-  const escapedFixedDomainSuffix = fixedDomainSuffix?.replace(
-    /[.*+?^${}()|[\]\\]/g,
-    "\\$&",
-  );
-  const subdomainPrefix = fixedDomainSuffix
-    ? (domain || "").replace(new RegExp(`\\.${escapedFixedDomainSuffix}$`), "")
-    : undefined;
 
   const debouncedValidateDomain = useDebouncedCallback(
     async (value: string) => {
@@ -301,7 +296,9 @@ export function AddEditDomainForm({
   const { handleKeyDown } = useEnterSubmit(formRef);
 
   const onSubmit = async (formData: FormData) => {
+    if (isSubmitting) return;
     try {
+      setIsSubmitting(true);
       const res = await fetch(endpoint.url, {
         method: endpoint.method,
         headers: {
@@ -333,6 +330,7 @@ export function AddEditDomainForm({
         toast.success(endpoint.successMessage);
         onSuccess?.(data);
       } else {
+        setIsSubmitting(false);
         const { error } = await res.json();
         if (res.status === 422) {
           setDomainStatus("conflict");
@@ -349,6 +347,7 @@ export function AddEditDomainForm({
         }
       }
     } catch (error) {
+      setIsSubmitting(false);
       toast.error(`Failed to ${props ? "update" : "add"} domain`);
     }
   };
@@ -412,49 +411,19 @@ export function AddEditDomainForm({
                 )}
               >
                 <div className="flex rounded-md border border-neutral-300 bg-white">
-                  {fixedDomainSuffix ? (
-                    <>
-                      <input
-                        value={subdomainPrefix}
-                        onChange={(e) => {
-                          const prefix = e.target.value
-                            .toLowerCase()
-                            .replace(/[^a-z0-9-]/g, "");
-                          const fullDomain = prefix
-                            ? `${prefix}.${fixedDomainSuffix}`
-                            : `.${fixedDomainSuffix}`;
-                          setValue("slug", fullDomain, {
-                            shouldDirty: true,
-                          });
-                          setDomainStatus("idle");
-                          setDomainValidateMessage(null);
-                          if (prefix) {
-                            debouncedValidateDomain(fullDomain);
-                          }
-                        }}
-                        className="block w-full rounded-l-md border-0 text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-0 sm:text-sm"
-                        placeholder="workspace"
-                        autoFocus={!isMobile}
-                      />
-                      <span className="inline-flex items-center rounded-r-md border-l border-neutral-300 bg-neutral-100 px-3 text-sm text-neutral-600">
-                        .{fixedDomainSuffix}
-                      </span>
-                      <input type="hidden" {...register("slug")} />
-                    </>
-                  ) : (
-                    <input
-                      {...register("slug", {
-                        onChange: (e) => {
-                          setDomainStatus("idle");
-                          setDomainValidateMessage(null);
-                          debouncedValidateDomain(e.target.value);
-                        },
-                      })}
-                      className="block w-full rounded-md border-0 text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-0 sm:text-sm"
-                      placeholder="go.acme.com"
-                      autoFocus={!isMobile}
-                    />
-                  )}
+                  <input
+                    {...register("slug", {
+                      onChange: (e) => {
+                        setDomainStatus("idle");
+                        setDomainValidateMessage(null);
+                        debouncedValidateDomain(e.target.value);
+                      },
+                    })}
+                    className="block w-full rounded-md border-0 text-neutral-900 placeholder-neutral-400 focus:outline-none focus:ring-0 sm:text-sm"
+                    placeholder="go.acme.com"
+                    autoFocus={!isMobile}
+                    data-testid={domainInputTestId}
+                  />
                 </div>
 
                 <AnimatedSizeContainer
@@ -462,7 +431,13 @@ export function AddEditDomainForm({
                   transition={{ ease: "easeInOut", duration: 0.1 }}
                 >
                   <div className="flex items-center justify-between gap-4 p-2 text-sm">
-                    <p>
+                    <p
+                      data-testid={
+                        domainStatus === "available"
+                          ? testIds.onboarding.domainAvailable
+                          : undefined
+                      }
+                    >
                       {domainStatus !== "idle" ? (
                         domainStatus === "invalid" ||
                         domainStatus === "error" ? (
@@ -733,7 +708,8 @@ export function AddEditDomainForm({
         <Button
           text={props ? "Save changes" : "Add domain"}
           disabled={saveDisabled}
-          loading={isSubmitting || isSubmitSuccessful}
+          loading={isSubmitting}
+          data-testid={submitTestId}
         />
       </div>
     </form>

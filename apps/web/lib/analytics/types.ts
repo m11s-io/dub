@@ -5,7 +5,6 @@ import {
   eventsQuerySchema,
 } from "../zod/schemas/analytics";
 import { analyticsResponse } from "../zod/schemas/analytics-response";
-import { getPartnerEarningsTimeseriesSchema } from "../zod/schemas/partner-profile";
 import {
   ANALYTICS_SALE_UNIT,
   ANALYTICS_VIEWS,
@@ -39,18 +38,14 @@ export type AnalyticsSaleUnit = (typeof ANALYTICS_SALE_UNIT)[number];
 export type DeviceTabs = "devices" | "browsers" | "os" | "triggers";
 
 export type AnalyticsFilters = Partial<
-  Omit<
-    z.infer<typeof analyticsQuerySchema>,
-    "start" | "end" | "partnerId" | "linkId"
-  >
+  Omit<z.infer<typeof analyticsQuerySchema>, "start" | "end" | "linkId">
 > & {
   workspaceId?: string;
   dataAvailableFrom?: Date;
   isDeprecatedClicksEndpoint?: boolean;
   start?: Date | null;
   end?: Date | null;
-  // Accept plain string (from partner-profile/cron routes) or ParsedFilter (from API schema)
-  partnerId?: string | ParsedFilter;
+  // Accept plain string (from cron routes) or ParsedFilter (from API schema)
   linkId?: string | ParsedFilter;
 };
 
@@ -63,7 +58,7 @@ type EventsStructuralFields = Pick<
 export type EventsFilters = Partial<
   Omit<
     z.infer<typeof eventsQuerySchema>,
-    "start" | "end" | "partnerId" | "linkId" | keyof EventsStructuralFields
+    "start" | "end" | "linkId" | keyof EventsStructuralFields
   >
 > &
   EventsStructuralFields & {
@@ -72,25 +67,7 @@ export type EventsFilters = Partial<
     customerId?: string;
     start?: Date | null;
     end?: Date | null;
-    // Accept plain string (from partner-profile/cron routes) or ParsedFilter (from API schema)
-    partnerId?: string | ParsedFilter;
+    // Accept plain string (from cron routes) or ParsedFilter (from API schema)
     linkId?: string | ParsedFilter;
     includeMetadata?: boolean;
   };
-
-const partnerAnalyticsSchema = analyticsQuerySchema
-  .pick({
-    event: true,
-    interval: true,
-    start: true,
-    end: true,
-    groupBy: true,
-  })
-  .partial();
-
-export type PartnerAnalyticsFilters = z.infer<typeof partnerAnalyticsSchema> & {
-  linkId?: string;
-};
-export type PartnerEarningsTimeseriesFilters = z.infer<
-  typeof getPartnerEarningsTimeseriesSchema
->;

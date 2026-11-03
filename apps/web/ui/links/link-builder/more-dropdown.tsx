@@ -1,8 +1,7 @@
 import useWorkspace from "@/lib/swr/use-workspace";
 import { useABTestingModal } from "@/ui/modals/link-builder/ab-testing-modal";
-import { useAdvancedModal } from "@/ui/modals/link-builder/advanced-modal";
+import { useAdvancedLinkFeaturesModal } from "@/ui/modals/link-builder/advanced-link-features-modal";
 import { useExpirationModal } from "@/ui/modals/link-builder/expiration-modal";
-import { usePartnersModal } from "@/ui/modals/link-builder/partners-modal";
 import { usePasswordModal } from "@/ui/modals/link-builder/password-modal";
 import { useTargetingModal } from "@/ui/modals/link-builder/targeting-modal";
 import { ProBadgeTooltip } from "@/ui/shared/pro-badge-tooltip";
@@ -20,7 +19,7 @@ export function MoreDropdown({
 }: {
   variant?: "page" | "modal";
 }) {
-  const { domains, defaultProgramId } = useWorkspace();
+  const { domains } = useWorkspace();
   const { isMobile } = useMediaQuery();
   const [openPopover, setOpenPopover] = useState(false);
   const { watch, setValue } = useFormContext<LinkFormData>();
@@ -30,7 +29,6 @@ export function MoreDropdown({
   const options = useMemo(() => {
     return [...(isMobile ? MOBILE_MORE_ITEMS : []), ...MORE_ITEMS].filter(
       (option) => {
-        if (option.key === "partnerId") return Boolean(defaultProgramId);
         if (option.key === "linkRetentionCleanupDisabledAt")
           return (
             Boolean(
@@ -41,22 +39,21 @@ export function MoreDropdown({
         return true;
       },
     );
-  }, [data, isMobile, domains, defaultProgramId, variant]);
+  }, [data, isMobile, domains, variant]);
 
   const { ABTestingModal, setShowABTestingModal } = useABTestingModal();
   const { PasswordModal, setShowPasswordModal } = usePasswordModal();
   const { TargetingModal, setShowTargetingModal } = useTargetingModal();
   const { ExpirationModal, setShowExpirationModal } = useExpirationModal();
-  const { AdvancedModal, setShowAdvancedModal } = useAdvancedModal();
-  const { PartnersModal, setShowPartnerModal } = usePartnersModal();
+  const { AdvancedLinkFeaturesModal, setShowAdvancedLinkFeaturesModal } =
+    useAdvancedLinkFeaturesModal();
 
   const modalCallbacks = {
     testVariants: setShowABTestingModal,
     password: setShowPasswordModal,
     targeting: setShowTargetingModal,
     expiresAt: setShowExpirationModal,
-    advanced: setShowAdvancedModal,
-    partnerId: setShowPartnerModal,
+    advanced: setShowAdvancedLinkFeaturesModal,
   };
 
   useLinkBuilderKeyboardShortcut(
@@ -86,8 +83,7 @@ export function MoreDropdown({
       <PasswordModal />
       <TargetingModal />
       <ExpirationModal />
-      <AdvancedModal />
-      <PartnersModal />
+      <AdvancedLinkFeaturesModal />
       <Popover
         align="start"
         content={

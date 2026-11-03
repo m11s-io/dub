@@ -7,7 +7,6 @@ import { waitUntil } from "@vercel/functions";
 import { createId } from "../create-id";
 import { combineTagIds } from "../tags/combine-tag-ids";
 import { encodeKeyIfCaseSensitive } from "./case-sensitivity";
-import { includeProgramEnrollment } from "./include-program-enrollment";
 import { includeTags } from "./include-tags";
 import { propagateBulkLinkChanges } from "./propagate-bulk-link-changes";
 import { checkIfLinksHaveTags } from "./utils/check-if-links-have-tags";
@@ -84,9 +83,7 @@ export async function bulkCreateLinks({
         in: Array.from(shortLinkToIndexMap.keys()),
       },
     },
-    include: {
-      ...includeProgramEnrollment,
-    },
+    include: {},
   });
 
   if (hasTags || hasWebhooks) {
@@ -148,9 +145,12 @@ export async function bulkCreateLinks({
 
         if (tagNames && tagNames.length > 0) {
           tagNames.filter(Boolean).forEach((tagName, tagIdx) => {
+            const resolvedTagId = tagNameToIdMap[tagName.toLowerCase()];
+            if (!resolvedTagId) return;
+
             linkTagsToCreate.push({
               linkId: link.id,
-              tagId: tagNameToIdMap[tagName.toLowerCase()],
+              tagId: resolvedTagId,
               createdAt: new Date(new Date().getTime() + tagIdx * 100),
             });
           });
@@ -209,7 +209,6 @@ export async function bulkCreateLinks({
       },
       include: {
         ...includeTags,
-        ...includeProgramEnrollment,
         webhooks: hasWebhooks
           ? {
               select: {

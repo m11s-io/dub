@@ -11,7 +11,6 @@ export const DATE_RANGE_INTERVAL_PRESETS = [
 ] as const;
 
 export const DUB_LINKS_ANALYTICS_INTERVAL = "24h";
-export const DUB_PARTNERS_ANALYTICS_INTERVAL = "30d";
 
 export const INTERVAL_DISPLAYS = [
   {
@@ -73,6 +72,7 @@ export const VALID_ANALYTICS_ENDPOINTS = [
   "os",
   "trigger", // deprecated, but keeping for now for backwards compatibility
   "triggers",
+  "event_names",
   "referers",
   "referer_urls",
   "top_folders",
@@ -81,9 +81,6 @@ export const VALID_ANALYTICS_ENDPOINTS = [
   "top_links",
   "top_urls",
   "top_base_urls",
-  "top_partners",
-  "top_groups",
-  "top_partner_tags",
   "utm_sources",
   "utm_mediums",
   "utm_campaigns",
@@ -103,6 +100,7 @@ export const SINGULAR_ANALYTICS_ENDPOINTS = {
   referer_urls: "refererUrl",
   os: "os",
   triggers: "trigger",
+  event_names: "eventName",
   utm_sources: "utm_source",
   utm_mediums: "utm_medium",
   utm_campaigns: "utm_campaign",
@@ -115,9 +113,6 @@ export const SINGULAR_ANALYTICS_ENDPOINTS = {
   top_links: "linkId",
   top_urls: "url",
   top_base_urls: "url",
-  top_groups: "groupId",
-  top_partners: "partnerId",
-  top_partner_tags: "partnerTagId",
 };
 
 export const VALID_ANALYTICS_FILTERS = [
@@ -126,9 +121,6 @@ export const VALID_ANALYTICS_FILTERS = [
   "linkId",
   "tagId",
   "folderId",
-  "groupId",
-  "partnerTagId",
-  "partnerId",
   "customerId",
   "interval",
   "start",
@@ -142,6 +134,7 @@ export const VALID_ANALYTICS_FILTERS = [
   "browser",
   "os",
   "trigger",
+  "eventName",
   "referer",
   "refererUrl",
   "url",
@@ -167,6 +160,7 @@ export const DIMENSIONAL_ANALYTICS_FILTERS = [
   "browser",
   "os",
   "trigger",
+  "eventName",
   "referer",
   "refererUrl",
   "url",

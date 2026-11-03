@@ -1,4 +1,4 @@
-import { RESOURCE_COLORS } from "@/ui/colors";
+import { TAG_COLORS } from "@/ui/colors";
 import * as z from "zod/v4";
 import { booleanQuerySchema, getPaginationQuerySchema } from "./misc";
 
@@ -40,7 +40,7 @@ export const getTagsCountQuerySchema = getTagsQuerySchema.omit({
 });
 
 // TODO: Remove "pink" after confirming we don't have any pink tags in the database
-const tagColors = [...RESOURCE_COLORS, "pink"] as const;
+const tagColors = [...TAG_COLORS, "pink"] as const;
 
 export const tagColorSchema = z
   .enum(tagColors, {
@@ -48,29 +48,28 @@ export const tagColorSchema = z
   })
   .describe("The color of the tag");
 
+const tagName = z
+  .string()
+  .trim()
+  .min(1)
+  .max(190)
+  .describe("The name of the tag to create.");
+
 export const createTagBodySchema = z
   .object({
-    name: z
-      .string()
-      .trim()
-      .min(1)
-      .max(50)
-      .describe("The name of the tag to create."),
+    name: tagName,
     color: tagColorSchema.describe(
-      `The color of the tag. If not provided, a random color will be used from the list: ${RESOURCE_COLORS.join(", ")}.`,
+      `The color of the tag. If not provided, a random color will be used from the list: ${TAG_COLORS.join(", ")}.`,
     ),
-    tag: z
-      .string()
-      .trim()
-      .min(1)
-      .describe("The name of the tag to create.")
-      .meta({ deprecated: true }),
+    tag: tagName.meta({
+      deprecated: true,
+    }),
   })
   .partial()
   .superRefine((data, ctx) => {
     if (!data.name && !data.tag) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        code: "custom",
         path: ["name"],
         message: "Name is required.",
       });

@@ -30,6 +30,7 @@ import { metadataQueryParser } from "./metadata-query-parser";
 import { EventsFilters } from "./types";
 import { formatUTCDateTimeClickhouse } from "./utils/format-utc-datetime-clickhouse";
 import { getStartEndDates } from "./utils/get-start-end-dates";
+import { withTinybirdTimeout } from "./utils/with-tinybird-timeout";
 
 // Fetch data for /api/events
 export const getEvents = async (params: EventsFilters) => {
@@ -49,6 +50,8 @@ export const getEvents = async (params: EventsFilters) => {
     dataAvailableFrom,
     query,
     includeMetadata = true,
+    page,
+    limit,
   } = params;
 
   const { startDate, endDate } = getStartEndDates({
@@ -94,8 +97,6 @@ export const getEvents = async (params: EventsFilters) => {
 
   const allFilters = [...metadataFilters, ...advancedFilters];
 
-  const partnerIdFilter = ensureParsedFilter(params.partnerId);
-  const partnerTagIdFilter = ensureParsedFilter(params.partnerTagId);
   const linkIdFilter = ensureParsedFilter(params.linkId);
   const folderIdFilter = ensureParsedFilter(params.folderId);
 
@@ -108,18 +109,10 @@ export const getEvents = async (params: EventsFilters) => {
     tagIdOperator,
     folderId: folderIdParam,
     folderIdOperator,
-    partnerId: partnerIdParam,
-    partnerIdOperator,
-    partnerTagId: partnerTagIdParam,
-    partnerTagIdOperator,
-    groupId: groupIdParam,
-    groupIdOperator,
     tenantId: tenantIdParam,
     tenantIdOperator,
   } = extractWorkspaceLinkFilters({
     ...params,
-    partnerId: partnerIdFilter,
-    partnerTagId: partnerTagIdFilter,
     linkId: linkIdFilter,
     folderId: folderIdFilter,
   });
@@ -127,20 +120,13 @@ export const getEvents = async (params: EventsFilters) => {
   const tinybirdParams: any = {
     eventType,
     workspaceId,
-    programId: params.programId,
     customerId: params.customerId,
     linkId: linkIdParam,
     linkIdOperator,
     folderId: folderIdParam,
     folderIdOperator,
-    partnerId: partnerIdParam,
-    partnerIdOperator,
-    partnerTagId: partnerTagIdParam,
-    partnerTagIdOperator,
     tenantId: tenantIdParam,
     tenantIdOperator,
-    groupId: groupIdParam,
-    groupIdOperator,
     ...(typeof triggerForPipe !== "object" && triggerForPipe
       ? { trigger: triggerForPipe }
       : {}),
@@ -155,15 +141,15 @@ export const getEvents = async (params: EventsFilters) => {
     ...(params.root !== undefined ? { root: params.root } : {}),
     ...(params.saleType ? { saleType: params.saleType } : {}),
     order: sortOrder,
-    offset: (params.page - 1) * params.limit,
-    limit: params.limit,
+    offset: (page - 1) * limit,
+    limit,
     sortBy: params.sortBy,
     start: formatUTCDateTimeClickhouse(startDate),
     end: formatUTCDateTimeClickhouse(endDate),
     filters: allFilters.length > 0 ? JSON.stringify(allFilters) : undefined,
   };
 
-  const response = await pipe(tinybirdParams);
+  const response = await withTinybirdTimeout(pipe(tinybirdParams));
 
   const [linksMap, customersMap] = await Promise.all([
     getLinksMap(response.data.map((d) => d.link_id)),

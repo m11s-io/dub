@@ -8,7 +8,7 @@ import useWorkspace from "./use-workspace";
 export default function useCustomersCount<T = number>({
   query,
   enabled = true,
-  includeParams = ["country", "partnerId", "linkId", "externalId", "search"],
+  includeParams = ["country", "linkId", "externalId", "search"],
 }: {
   query?: z.infer<typeof getCustomersCountQuerySchema>;
   enabled?: boolean;
@@ -21,7 +21,10 @@ export default function useCustomersCount<T = number>({
     enabled &&
       workspaceId &&
       `/api/customers/count${getQueryString(
-        { workspaceId, ...query },
+        {
+          workspaceId,
+          ...query,
+        },
         {
           include: includeParams,
         },

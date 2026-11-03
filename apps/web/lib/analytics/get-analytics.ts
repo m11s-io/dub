@@ -22,6 +22,7 @@ import { metadataQueryParser } from "./metadata-query-parser";
 import { AnalyticsFilters } from "./types";
 import { formatUTCDateTimeClickhouse } from "./utils/format-utc-datetime-clickhouse";
 import { getStartEndDates } from "./utils/get-start-end-dates";
+import { withTinybirdTimeout } from "./utils/with-tinybird-timeout";
 
 // Fetch data for /api/analytics
 export const getAnalytics = async (params: AnalyticsFilters) => {
@@ -99,14 +100,7 @@ export const getAnalytics = async (params: AnalyticsFilters) => {
   const pipe = tb.buildPipe({
     pipe: ["count", "timeseries"].includes(groupBy!)
       ? `v4_${groupBy}`
-      : [
-            "top_folders",
-            "top_link_tags",
-            "top_domains",
-            "top_partners",
-            "top_partner_tags",
-            "top_groups",
-          ].includes(groupBy!)
+      : ["top_folders", "top_link_tags", "top_domains"].includes(groupBy!)
         ? "v4_group_by_link_metadata"
         : "v4_group_by",
     parameters: analyticsFilterTB,
@@ -133,8 +127,6 @@ export const getAnalytics = async (params: AnalyticsFilters) => {
   const allFilters = [...metadataFilters, ...advancedFilters];
 
   const folderIdFilter = ensureParsedFilter(params.folderId);
-  const partnerIdFilter = ensureParsedFilter(params.partnerId);
-  const partnerTagIdFilter = ensureParsedFilter(params.partnerTagId);
 
   let {
     domain: domainParam,
@@ -145,18 +137,10 @@ export const getAnalytics = async (params: AnalyticsFilters) => {
     folderIdOperator,
     tagId: tagIdParam,
     tagIdOperator,
-    partnerId: partnerIdParam,
-    partnerIdOperator,
-    partnerTagId: partnerTagIdParam,
-    partnerTagIdOperator,
-    groupId: groupIdParam,
-    groupIdOperator,
     tenantId: tenantIdParam,
     tenantIdOperator,
   } = extractWorkspaceLinkFilters({
     ...params,
-    partnerId: partnerIdFilter,
-    partnerTagId: partnerTagIdFilter,
     linkId: normalizedLinkId,
     folderId: folderIdFilter,
   });
@@ -164,15 +148,8 @@ export const getAnalytics = async (params: AnalyticsFilters) => {
   const tinybirdParams: any = {
     workspaceId,
     customerId: params.customerId,
-    programId: params.programId,
-    partnerId: partnerIdParam,
-    partnerIdOperator,
-    partnerTagId: partnerTagIdParam,
-    partnerTagIdOperator,
     tenantId: tenantIdParam,
     tenantIdOperator,
-    groupId: groupIdParam,
-    groupIdOperator,
     linkId: linkIdParam,
     linkIdOperator,
     domain: domainParam,
@@ -193,7 +170,7 @@ export const getAnalytics = async (params: AnalyticsFilters) => {
     filters: allFilters.length > 0 ? JSON.stringify(allFilters) : undefined,
   };
 
-  const response = await pipe(tinybirdParams);
+  const response = await withTinybirdTimeout(pipe(tinybirdParams));
 
   if (groupBy === "count") {
     const { groupByField, ...rest } = response.data[0];
@@ -219,7 +196,6 @@ export const getAnalytics = async (params: AnalyticsFilters) => {
         title: true,
         comments: true,
         folderId: true,
-        partnerId: true,
         createdAt: true,
       },
     });
@@ -246,37 +222,6 @@ export const getAnalytics = async (params: AnalyticsFilters) => {
           }),
           createdAt: link.createdAt.toISOString(),
           ...item,
-        });
-      })
-      .filter((d) => d !== null);
-  } else if (groupBy === "top_partners") {
-    const partners = await prisma.partner.findMany({
-      where: {
-        id: {
-          in: response.data.map((item) => item.groupByField),
-        },
-      },
-      select: {
-        id: true,
-        name: true,
-        email: true,
-        image: true,
-        country: true,
-        payoutsEnabledAt: true,
-      },
-    });
-
-    return response.data
-      .map((item) => {
-        const partner = partners.find((p) => p.id === item.groupByField);
-        if (!partner) return null;
-        return analyticsResponse[groupBy].parse({
-          ...item,
-          partnerId: item.groupByField,
-          partner: {
-            ...partner,
-            payoutsEnabledAt: partner.payoutsEnabledAt?.toISOString() || null,
-          },
         });
       })
       .filter((d) => d !== null);
@@ -336,55 +281,6 @@ export const getAnalytics = async (params: AnalyticsFilters) => {
             folderId: item.groupByField,
             folder,
           });
-      })
-      .filter((d) => d !== null);
-  } else if (groupBy === "top_partner_tags") {
-    const partnerTags = await prisma.partnerTag.findMany({
-      where: {
-        id: { in: response.data.map((item) => item.groupByField) },
-      },
-      select: {
-        id: true,
-        name: true,
-      },
-    });
-    return response.data
-      .map((item) => {
-        const partnerTag = partnerTags.find((t) => t.id === item.groupByField);
-        if (!partnerTag) return null;
-        return analyticsResponse[groupBy].parse({
-          ...item,
-          partnerTagId: item.groupByField,
-          partnerTag,
-        });
-      })
-      .filter((d) => d !== null);
-  } else if (groupBy === "top_groups") {
-    const groups = await prisma.partnerGroup.findMany({
-      where: {
-        id: {
-          in: response.data.map((item) => item.groupByField),
-        },
-      },
-      select: {
-        id: true,
-        name: true,
-        slug: true,
-        color: true,
-      },
-    });
-
-    return response.data
-      .map((item) => {
-        const group = groups.find((g) => g.id === item.groupByField);
-
-        if (!group) return null;
-
-        return analyticsResponse[groupBy].parse({
-          ...item,
-          groupId: item.groupByField,
-          group,
-        });
       })
       .filter((d) => d !== null);
   }

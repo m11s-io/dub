@@ -1,5 +1,6 @@
 import { createId } from "@/lib/api/create-id";
 import { addDomainToVercel } from "@/lib/api/domains/add-domain-vercel";
+import { parseDomainJsonConfig } from "@/lib/api/domains/parse-domain-json-config";
 import { transformDomain } from "@/lib/api/domains/transform-domain";
 import { validateDomain } from "@/lib/api/domains/utils";
 import { DubApiError } from "@/lib/api/errors";
@@ -134,6 +135,21 @@ export const POST = withWorkspace(
       }
     }
 
+    const parsedAssetLinks = parseDomainJsonConfig({
+      value: assetLinks,
+      field: "assetLinks",
+    });
+
+    const parsedAppleAppSiteAssociation = parseDomainJsonConfig({
+      value: appleAppSiteAssociation,
+      field: "appleAppSiteAssociation",
+    });
+
+    const parsedDeepviewData = parseDomainJsonConfig({
+      value: deepviewData,
+      field: "deepviewData",
+    });
+
     const validDomain = await validateDomain(slug);
 
     if (validDomain.error && validDomain.code) {
@@ -166,6 +182,14 @@ export const POST = withWorkspace(
 
     const domainRecord = await prisma.$transaction(
       async (tx) => {
+        if (slug.endsWith(".dub.link")) {
+          throw new DubApiError({
+            code: "forbidden",
+            message:
+              "You are not allowed to claim a .dub.link subdomain. Please contact support if you think this is an error: dub.co/support",
+          });
+        }
+
         const totalDomains = await tx.domain.count({
           where: {
             projectId: workspace.id,
@@ -177,28 +201,11 @@ export const POST = withWorkspace(
             code: "exceeded_limit",
             message: exceededLimitError({
               plan: workspace.plan,
+              planPeriod: workspace.planPeriod,
               limit: workspace.domainsLimit,
               type: "domains",
             }),
           });
-        }
-
-        if (slug.endsWith(".dub.link")) {
-          const alreadyClaimed = await tx.domain.count({
-            where: {
-              projectId: workspace.id,
-              slug: {
-                endsWith: ".dub.link",
-              },
-            },
-          });
-          if (alreadyClaimed >= 1) {
-            throw new DubApiError({
-              code: "forbidden",
-              message:
-                "You can only claim one .dub.link subdomain per workspace.",
-            });
-          }
         }
 
         return await tx.domain.create({
@@ -214,12 +221,14 @@ export const POST = withWorkspace(
             expiredUrl,
             notFoundUrl,
             ...(logoUploaded && { logo: logoUploaded.url }),
-            ...(assetLinks && { assetLinks: JSON.parse(assetLinks) }),
-            ...(appleAppSiteAssociation && {
-              appleAppSiteAssociation: JSON.parse(appleAppSiteAssociation),
+            ...(parsedAssetLinks !== undefined && {
+              assetLinks: parsedAssetLinks,
             }),
-            ...(deepviewData && {
-              deepviewData: JSON.parse(deepviewData),
+            ...(parsedAppleAppSiteAssociation !== undefined && {
+              appleAppSiteAssociation: parsedAppleAppSiteAssociation,
+            }),
+            ...(parsedDeepviewData !== undefined && {
+              deepviewData: parsedDeepviewData,
             }),
           },
         });

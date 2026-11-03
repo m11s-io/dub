@@ -2,7 +2,6 @@ import { prisma } from "@/lib/prisma";
 import { Webhook } from "@prisma/client";
 import * as z from "zod/v4";
 import { DubApiError } from "../api/errors";
-import { getDefaultProgramIdOrThrow } from "../api/programs/get-default-program-id-or-throw";
 import { Session } from "../auth";
 import { getFolders } from "../folder/get-folders";
 import { WorkspaceProps } from "../types";
@@ -15,33 +14,11 @@ export async function validateWebhook({
   user,
 }: {
   input: Partial<z.infer<typeof createWebhookSchema>>;
-  workspace: Pick<WorkspaceProps, "id" | "defaultProgramId">;
+  workspace: Pick<WorkspaceProps, "id">;
   webhook?: Webhook;
   user: Session["user"];
 }) {
-  const { url, linkIds, triggers } = input;
-
-  // payout.confirmed trigger requires external payouts enabled
-  if (triggers && triggers.includes("payout.confirmed")) {
-    const programId = getDefaultProgramIdOrThrow(workspace);
-
-    const program = await prisma.program.findUniqueOrThrow({
-      where: {
-        id: programId,
-      },
-      select: {
-        payoutMode: true,
-      },
-    });
-
-    // TODO: Maybe show this for all in the future?
-    if (program.payoutMode === "internal") {
-      throw new DubApiError({
-        code: "bad_request",
-        message: `The 'payout.confirmed' trigger is not currently available for your workspace.`,
-      });
-    }
-  }
+  const { url, linkScope, linkIds, folderIds } = input;
 
   if (url) {
     const webhookUrlExists = await prisma.webhook.findFirst({
@@ -64,7 +41,7 @@ export async function validateWebhook({
     }
   }
 
-  if (linkIds && linkIds.length > 0) {
+  if (linkScope === "links" && linkIds && linkIds.length > 0) {
     const folders = await getFolders({
       workspaceId: workspace.id,
       userId: user.id,
@@ -91,6 +68,23 @@ export async function validateWebhook({
         code: "bad_request",
         message:
           "Invalid link IDs provided. Please check the links you are adding the webhook to.",
+      });
+    }
+  }
+
+  if (linkScope === "folders" && folderIds && folderIds.length > 0) {
+    const folders = await getFolders({
+      workspaceId: workspace.id,
+      userId: user.id,
+    });
+
+    const accessibleFolderIds = new Set(folders.map((folder) => folder.id));
+
+    if (!folderIds.every((folderId) => accessibleFolderIds.has(folderId))) {
+      throw new DubApiError({
+        code: "bad_request",
+        message:
+          "Invalid folder IDs provided. Please check the folders you are adding the webhook to.",
       });
     }
   }

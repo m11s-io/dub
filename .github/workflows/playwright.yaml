@@ -2,7 +2,6 @@ name: Playwright E2E Tests
 
 on:
   pull_request:
-    branches: [main]
     paths:
       - "apps/web/**"
       - "packages/**"
@@ -25,20 +24,15 @@ jobs:
     env:
       CI: "true"
       NODE_OPTIONS: "--max-old-space-size=8192"
+      DOTENV_FLOW_SILENT: "true"
+      RUNTIME_CACHE_DISABLE_BUILD_CACHE: "true"
       DATABASE_URL: "mysql://root:@localhost:3306/planetscale"
       PLANETSCALE_DATABASE_URL: "http://root:unused@localhost:3900/planetscale"
 
       NEXTAUTH_SECRET: "e2e-test-secret-at-least-32-chars-long"
-      NEXTAUTH_URL: "http://partners.localhost:8888"
+      NEXTAUTH_URL: "http://localhost:8888"
 
-      E2E_PARTNER_EMAIL: "partner1@dub-internal-test.com"
-      E2E_PARTNER_PASSWORD: "password"
-
-      TINYBIRD_API_KEY: "xx"
-      TINYBIRD_API_URL: "xx"
-
-      AXIOM_TOKEN: "xx"
-      AXIOM_DATASET: "xx"
+      # TINYBIRD_API_KEY / TINYBIRD_API_URL are set after Tinybird Local is ready
 
       # serverless-redis-http (SRH) — must match jobs.e2e.services.srh env
       SRH_TOKEN: "e2e_srh_token"
@@ -46,9 +40,12 @@ jobs:
       UPSTASH_REDIS_REST_TOKEN: "e2e_srh_token"
       UPSTASH_VECTOR_REST_URL: "https://sensible-camel-xxxx.upstash.io"
       UPSTASH_VECTOR_REST_TOKEN: "xx"
-      QSTASH_TOKEN: "xx"
-      QSTASH_CURRENT_SIGNING_KEY: "xx"
-      QSTASH_NEXT_SIGNING_KEY: "xx"
+
+      # QStash local-dev (User 1) — must match jobs.e2e Start QStash step
+      QSTASH_URL: "http://127.0.0.1:8080"
+      QSTASH_TOKEN: "eyJVc2VySUQiOiJkZWZhdWx0VXNlciIsIlBhc3N3b3JkIjoiZGVmYXVsdFBhc3N3b3JkIn0="
+      QSTASH_CURRENT_SIGNING_KEY: "sig_7kYjw48mhY7kAjqNGcy6cr29RJ6r"
+      QSTASH_NEXT_SIGNING_KEY: "sig_5ZB6DVzB1wjE8S6rZ7eenA8Pdnhs"
 
       # RESEND_API_KEY must be unset so emails route through SMTP to MailHog
       SMTP_HOST: "localhost"
@@ -61,10 +58,8 @@ jobs:
 
       STRIPE_SECRET_KEY: "xx"
       STRIPE_WEBHOOK_SECRET: "xx"
-      STRIPE_CONNECT_WEBHOOK_SECRET: "xx"
       STRIPE_APP_WEBHOOK_SECRET_TEST: "xx"
       STRIPE_APP_SECRET_KEY_TEST: "xx"
-      STRIPE_CONNECT_V2_WEBHOOK_SECRET: "xx"
       STRIPE_APP_SECRET_KEY_SANDBOX: "xx"
       STRIPE_APP_SECRET_KEY: "xx"
 
@@ -108,6 +103,14 @@ jobs:
         ports:
           - 8079:80
 
+      # Classic .datasource/.pipe project; COMPATIBILITY_MODE is required
+      tinybird:
+        image: tinybirdco/tinybird-local:latest@sha256:c3fe9709224e6898f89b1dc1073d0046e665d2dc571c5c93ef13c807b6bb15f4
+        env:
+          COMPATIBILITY_MODE: "1"
+        ports:
+          - 7181:7181
+
     steps:
       - name: Check out code
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
@@ -122,6 +125,50 @@ jobs:
             -mysql-dbname=planetscale \
             -mysql-no-pass \
             -mysql-addr=127.0.0.1
+
+      - name: Start QStash dev server
+        run: |
+          nohup npx --yes @upstash/qstash-cli@2.37.18 dev > /tmp/qstash.log 2>&1 &
+          for i in $(seq 1 30); do
+            if curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080 | grep -qE '^[0-9]{3}$'; then
+              echo "QStash is up"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "QStash failed to start"
+          cat /tmp/qstash.log
+          exit 1
+
+      - name: Configure Tinybird Local
+        working-directory: packages/tinybird
+        run: |
+          TOKEN=""
+          for i in $(seq 1 90); do
+            TOKEN=$(curl -sf http://127.0.0.1:7181/tokens | jq -r '.workspace_admin_token // empty' || true)
+            if [ -n "$TOKEN" ]; then
+              echo "Tinybird Local is up"
+              break
+            fi
+            sleep 2
+          done
+          if [ -z "$TOKEN" ]; then
+            echo "Tinybird Local did not become ready on :7181"
+            exit 1
+          fi
+
+          echo "::add-mask::$TOKEN"
+          {
+            echo "TINYBIRD_API_KEY<<EOF"
+            echo "$TOKEN"
+            echo "EOF"
+            echo "TINYBIRD_API_URL=http://127.0.0.1:7181"
+          } >> "$GITHUB_ENV"
+
+          python3 -m venv /tmp/tinybird-cli
+          /tmp/tinybird-cli/bin/pip install tinybird-cli
+          /tmp/tinybird-cli/bin/tb --host http://127.0.0.1:7181 --token "$TOKEN" auth
+          /tmp/tinybird-cli/bin/tb push --force --yes datasources/*.datasource
 
       - name: Setup pnpm
         uses: pnpm/action-setup@a3252b78c470c02df07e9d59298aecedc3ccdd6d # v3
@@ -154,13 +201,13 @@ jobs:
         working-directory: apps/web
         run: pnpm prisma:push
 
-      - name: Seed test data
-        working-directory: apps/web
-        run: pnpm tsx playwright/seed.ts
-
       - name: Build application
         run: pnpm turbo build --filter=web
 
-      - name: Run Playwright tests
+      - name: Run Playwright API tests
         working-directory: apps/web
-        run: pnpm test:e2e
+        run: pnpm test:e2e --project=api
+
+      - name: Run Playwright UI tests
+        working-directory: apps/web
+        run: pnpm test:e2e --project=workspaces --project=chromium-workspace

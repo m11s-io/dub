@@ -6,7 +6,6 @@ import { Prisma } from "@prisma/client";
 import { waitUntil } from "@vercel/functions";
 import * as z from "zod/v4";
 import { combineTagIds } from "../tags/combine-tag-ids";
-import { includeProgramEnrollment } from "./include-program-enrollment";
 import { includeTags } from "./include-tags";
 import { propagateBulkLinkChanges } from "./propagate-bulk-link-changes";
 import { transformLink } from "./utils";
@@ -39,6 +38,9 @@ export async function bulkUpdateLinks(
 
   const imageUrlNonce = nanoid(7);
 
+  const { utm_source, utm_medium, utm_campaign, utm_term, utm_content } =
+    getParamsFromURL(url || "");
+
   const updatedLinks = await Promise.all(
     linkIds.map((linkId) =>
       prisma.link.update({
@@ -59,7 +61,14 @@ export async function bulkUpdateLinks(
           geo: geo === null ? Prisma.DbNull : geo,
           testVariants: testVariants === null ? Prisma.DbNull : testVariants,
 
-          ...(url && getParamsFromURL(url)),
+          // Only persist known UTM Link columns — ignore other query params
+          ...(url && {
+            utm_source: utm_source || null,
+            utm_medium: utm_medium || null,
+            utm_campaign: utm_campaign || null,
+            utm_term: utm_term || null,
+            utm_content: utm_content || null,
+          }),
           // Associate tags by tagNames
           ...(tagNames &&
             workspaceId && {
@@ -102,7 +111,6 @@ export async function bulkUpdateLinks(
         },
         include: {
           ...includeTags,
-          ...includeProgramEnrollment,
           webhooks: webhookIds ? { select: { webhookId: true } } : false,
         },
       }),

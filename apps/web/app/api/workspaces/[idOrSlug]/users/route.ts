@@ -8,6 +8,7 @@ import {
   getWorkspaceUsersQuerySchema,
   workspaceUserSchema,
 } from "@/lib/zod/schemas/workspaces";
+import { pluralize } from "@dub/utils";
 import { WorkspaceRole } from "@prisma/client";
 import { NextResponse } from "next/server";
 import * as z from "zod/v4";
@@ -33,6 +34,9 @@ export const GET = withWorkspace(
       include: {
         user: true,
       },
+      orderBy: {
+        createdAt: "asc",
+      },
     });
 
     const parsedUsers = users.map(({ user, ...rest }) =>
@@ -48,6 +52,7 @@ export const GET = withWorkspace(
   },
   {
     requiredPermissions: ["workspaces.read"],
+    requiredRoles: ["owner", "member", "billing"],
   },
 );
 
@@ -66,7 +71,7 @@ export const PATCH = withWorkspace(
       plan: workspace.plan,
     });
 
-    const response = await prisma.projectUsers.update({
+    const workspaceUser = await prisma.projectUsers.update({
       where: {
         userId_projectId: {
           projectId: workspace.id,
@@ -80,7 +85,8 @@ export const PATCH = withWorkspace(
         role,
       },
     });
-    return NextResponse.json(response);
+
+    return NextResponse.json(workspaceUser);
   },
   {
     requiredPermissions: ["workspaces.write"],
@@ -116,6 +122,7 @@ export const DELETE = withWorkspace(
           role: true,
           user: {
             select: {
+              id: true,
               isMachine: true,
               defaultWorkspace: true,
             },
@@ -151,7 +158,25 @@ export const DELETE = withWorkspace(
       });
     }
 
-    const [response] = await Promise.allSettled([
+    const activeRestrictedTokens = await prisma.restrictedToken.count({
+      where: {
+        projectId: workspace.id,
+        userId,
+        lastUsed: {
+          not: null,
+        },
+      },
+    });
+
+    if (activeRestrictedTokens) {
+      const tokenTense = pluralize("token", activeRestrictedTokens);
+      throw new DubApiError({
+        code: "bad_request",
+        message: `This user has ${activeRestrictedTokens} active restricted ${tokenTense}. Please remove the ${tokenTense} first before removing the user from the workspace.`,
+      });
+    }
+
+    await Promise.all([
       // Remove the user from the workspace
       prisma.projectUsers.delete({
         where: {
@@ -191,6 +216,8 @@ export const DELETE = withWorkspace(
       });
     }
 
-    return NextResponse.json(response);
+    return NextResponse.json({
+      userId,
+    });
   },
 );

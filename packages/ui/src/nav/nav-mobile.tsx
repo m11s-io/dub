@@ -9,23 +9,14 @@ import useSWR from "swr";
 import { AnimatedSizeContainer } from "../animated-size-container";
 import { ButtonProps, buttonVariants } from "../button";
 import { NavItemChild, NavItemChildren } from "../content";
-import {
-  DubAnalyticsIcon,
-  DubApiIcon,
-  DubLinksIcon,
-  DubPartnersIcon,
-} from "../icons";
+import { DubAnalyticsIcon, DubApiIcon, DubLinksIcon } from "../icons";
+import { NavWordmark } from "../nav-wordmark";
 import { navItems, type NavItem, type NavTheme } from "./nav";
 
 const specialIcons: Record<string, ReactNode> = {
   "Dub Links": (
     <div className="flex size-5 items-center justify-center rounded bg-orange-400">
       <DubLinksIcon className="size-3 text-orange-900" />
-    </div>
-  ),
-  "Dub Partners": (
-    <div className="flex size-5 items-center justify-center rounded bg-violet-400">
-      <DubPartnersIcon className="size-3 text-violet-900" />
     </div>
   ),
   "Dub Analytics": (
@@ -105,6 +96,21 @@ export function NavMobile({
           <Menu className="h-5 w-5 text-neutral-600 dark:text-white/70" />
         )}
       </button>
+      {/* The nav below covers the logo in the main nav, so we render it again here */}
+      {open && (
+        <Link
+          href={createHref("/home", domain, {
+            utm_source: "Custom Domain",
+            utm_medium: "Navbar",
+            utm_campaign: domain,
+            utm_content: "Logo",
+          })}
+          onClick={() => setOpen(false)}
+          className="fixed left-3 top-0 z-30 flex h-14 items-center pr-2"
+        >
+          <NavWordmark />
+        </Link>
+      )}
       <nav
         className={cn(
           "fixed inset-0 z-20 hidden max-h-screen w-full overflow-y-auto bg-white px-5 py-16 lg:hidden dark:bg-black dark:text-white/70",

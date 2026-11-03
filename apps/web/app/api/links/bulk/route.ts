@@ -7,10 +7,11 @@ import {
 } from "@/lib/api/links";
 import { bulkDeleteLinks } from "@/lib/api/links/bulk-delete-links";
 import { bulkUpdateLinks } from "@/lib/api/links/bulk-update-links";
-import { includeProgramEnrollment } from "@/lib/api/links/include-program-enrollment";
+import { getOwnedLinkImageKey } from "@/lib/api/links/get-owned-link-image-key";
 import { includeTags } from "@/lib/api/links/include-tags";
 import { throwIfLinksUsageExceeded } from "@/lib/api/links/usage-checks";
 import { checkIfLinksHaveFolders } from "@/lib/api/links/utils/check-if-links-have-folders";
+import { isRootDomainLinkKey } from "@/lib/api/links/utils/is-root-domain-link-key";
 import { combineTagIds } from "@/lib/api/tags/combine-tag-ids";
 import { parseRequestBody } from "@/lib/api/utils";
 import { withWorkspace } from "@/lib/auth";
@@ -26,7 +27,6 @@ import {
   bulkCreateLinksBodySchema,
   bulkUpdateLinksBodySchema,
 } from "@/lib/zod/schemas/links";
-import { R2_URL } from "@dub/utils";
 import { waitUntil } from "@vercel/functions";
 import { NextResponse } from "next/server";
 
@@ -52,6 +52,7 @@ export const POST = withWorkspace(
         code: "exceeded_limit",
         message: exceededLimitError({
           plan: workspace.plan,
+          planPeriod: workspace.planPeriod,
           limit: workspace.linksLimit,
           type: "links",
         }),
@@ -116,8 +117,10 @@ export const POST = withWorkspace(
       const workspaceTags = await prisma.tag.findMany({
         where: {
           projectId: workspace.id,
-          ...(tagIds.length > 0 ? { id: { in: tagIds } } : {}),
-          ...(tagNames.length > 0 ? { name: { in: tagNames } } : {}),
+          OR: [
+            ...(tagIds.length > 0 ? [{ id: { in: tagIds } }] : []),
+            ...(tagNames.length > 0 ? [{ name: { in: tagNames } }] : []),
+          ],
         },
         select: {
           id: true,
@@ -130,7 +133,9 @@ export const POST = withWorkspace(
         name.toLowerCase(),
       );
 
-      validLinks.forEach((link, index) => {
+      const nextValidLinks: ProcessedLinkProps[] = [];
+
+      for (const link of validLinks) {
         const combinedTagIds =
           combineTagIds({
             tagId: link.tagId,
@@ -142,13 +147,12 @@ export const POST = withWorkspace(
         );
 
         if (invalidTagIds.length > 0) {
-          // remove link from validLinks and add error to errorLinks
-          validLinks = validLinks.filter((_, i) => i !== index);
           errorLinks.push({
             error: `Invalid tagIds detected: ${invalidTagIds.join(", ")}`,
             code: "unprocessable_entity",
             link,
           });
+          continue;
         }
 
         const invalidTagNames = link.tagNames?.filter(
@@ -156,14 +160,18 @@ export const POST = withWorkspace(
         );
 
         if (invalidTagNames?.length) {
-          validLinks = validLinks.filter((_, i) => i !== index);
           errorLinks.push({
             error: `Invalid tagNames detected: ${invalidTagNames.join(", ")}`,
             code: "unprocessable_entity",
             link,
           });
+          continue;
         }
-      });
+
+        nextValidLinks.push(link);
+      }
+
+      validLinks = nextValidLinks;
     }
 
     if (checkIfLinksHaveFolders(validLinks)) {
@@ -233,19 +241,26 @@ export const POST = withWorkspace(
 
       const workspaceWebhookIds = webhooks.map(({ id }) => id);
 
-      validLinks.forEach((link, index) => {
+      const nextValidLinks: ProcessedLinkProps[] = [];
+
+      for (const link of validLinks) {
         const invalidWebhookIds = link.webhookIds?.filter(
           (id) => !workspaceWebhookIds.includes(id),
         );
+
         if (invalidWebhookIds && invalidWebhookIds.length > 0) {
-          validLinks = validLinks.filter((_, i) => i !== index);
           errorLinks.push({
             error: `Invalid webhookIds detected: ${invalidWebhookIds.join(", ")}`,
             code: "unprocessable_entity",
             link,
           });
+          continue;
         }
-      });
+
+        nextValidLinks.push(link);
+      }
+
+      validLinks = nextValidLinks;
     }
 
     const validLinksResponse =
@@ -470,15 +485,12 @@ export const PATCH = withWorkspace(
       (async () => {
         if (data.proxy && data.image) {
           await Promise.allSettled(
-            links.map(async (link) => {
-              // delete old proxy image urls if exist and match the link ID
-              if (
-                link.image &&
-                link.image.startsWith(`${R2_URL}/images/${link.id}`) &&
-                link.image !== data.image
-              ) {
-                storage.delete({ key: link.image.replace(`${R2_URL}/`, "") });
+            links.map((link) => {
+              const key = getOwnedLinkImageKey(link.image, link.id);
+              if (key && link.image !== data.image) {
+                return storage.delete({ key });
               }
+              return null;
             }),
           );
         }
@@ -540,7 +552,6 @@ export const DELETE = withWorkspace(
       },
       include: {
         ...includeTags,
-        ...includeProgramEnrollment,
       },
     });
 
@@ -571,14 +582,9 @@ export const DELETE = withWorkspace(
       });
     }
 
-    const { count: deletedCount } = await prisma.link.deleteMany({
-      where: {
-        id: { in: links.map((link) => link.id) },
-        projectId: workspace.id,
-      },
-    });
+    links = links.filter((link) => !isRootDomainLinkKey(link.key));
 
-    waitUntil(bulkDeleteLinks(links));
+    const { deletedCount } = await bulkDeleteLinks(links);
 
     return NextResponse.json(
       {

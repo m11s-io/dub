@@ -69,6 +69,7 @@ export const trackHubSpotSaleEvent = async ({
     where: {
       projectId: workspace.id,
       OR: [
+        { email: contactInfo.properties.email },
         { externalId: contactInfo.id },
         { externalId: contactInfo.properties.email },
       ],
@@ -86,7 +87,10 @@ export const trackHubSpotSaleEvent = async ({
     paymentProcessor: "custom",
     invoiceId: dealId,
     workspace,
-    metadata: {},
+    metadata: {
+      hubspotDealId: dealId,
+      hubspotContactId: contactInfo.id,
+    },
   });
 
   return `Sale tracked for deal ${dealId}.`;

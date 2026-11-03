@@ -1,22 +1,17 @@
-import { createProgram } from "@/lib/actions/partners/create-program";
 import { claimDotLinkDomain } from "@/lib/api/domains/claim-dot-link-domain";
-import { reactivateProgram } from "@/lib/api/programs/reactivate-program";
 import { onboardingStepCache } from "@/lib/api/workspaces/onboarding-step-cache";
 import { tokenCache } from "@/lib/auth/token-cache";
-import { wouldGainPartnerAccess } from "@/lib/plans/has-partner-access";
 import { prisma } from "@/lib/prisma";
 import { stripe } from "@/lib/stripe";
+import { getSubscriptionBillingFields } from "@/lib/stripe/workspace-subscription-fields";
 import { redis } from "@/lib/upstash";
 import { sendBatchEmail } from "@dub/email";
 import TrialStartedEmail from "@dub/email/templates/trial/trial-started";
-import {
-  getPlanAndTierFromPriceId,
-  getWorkspaceLimitsForStripeSubscriptionStatus,
-  log,
-} from "@dub/utils";
+import { getPlanAndTierFromPriceId, log } from "@dub/utils";
 import { User } from "@prisma/client";
 import Stripe from "stripe";
-import { getPlanPeriodFromStripeSubscription } from "./utils/stripe-plan-period";
+import { getPlanPeriodFromStripeSubscription } from "./utils/get-plan-period-from-stripe-subscription";
+import { getWorkspaceLimitsFromStripeSubscription } from "./utils/get-workspace-limits-from-stripe-subscription";
 
 export async function checkoutSessionCompleted(
   event: Stripe.CheckoutSessionCompletedEvent,
@@ -60,11 +55,6 @@ export async function checkoutSessionCompleted(
     return `Invalid price ID in checkout.session.completed event: ${priceId}`;
   }
 
-  const limits = getWorkspaceLimitsForStripeSubscriptionStatus({
-    planLimits: plan.limits,
-    subscriptionStatus: subscription.status,
-  });
-
   const trialEndsAt =
     subscription.status === "trialing" && subscription.trial_end
       ? new Date(subscription.trial_end * 1000)
@@ -74,6 +64,11 @@ export async function checkoutSessionCompleted(
   const workspaceId = checkoutSession.client_reference_id;
   const planName = plan.name.toLowerCase();
   const planPeriod = getPlanPeriodFromStripeSubscription(subscription);
+
+  const limits = getWorkspaceLimitsFromStripeSubscription({
+    planLimits: plan.limits,
+    subscription,
+  });
 
   // when the workspace subscribes to a plan, set their stripe customer ID
   // in the database for easy identification in future webhook events
@@ -90,19 +85,15 @@ export async function checkoutSessionCompleted(
       planTier: planTier,
       usageLimit: limits.clicks,
       linksLimit: limits.links,
-      payoutsLimit: limits.payouts,
       domainsLimit: limits.domains,
       aiLimit: limits.ai,
       tagsLimit: limits.tags,
-      partnerTagsLimit: limits.partnerTags,
       foldersLimit: limits.folders,
-      groupsLimit: limits.groups,
-      networkInvitesLimit: limits.networkInvites,
-      partnersLimit: limits.partners,
       usersLimit: limits.users,
       trialEndsAt,
       paymentFailedAt: null,
       ...(planPeriod !== undefined && { planPeriod }),
+      ...getSubscriptionBillingFields(subscription),
     },
     include: {
       users: {
@@ -138,17 +129,8 @@ export async function checkoutSessionCompleted(
 
   await Promise.allSettled([
     completeOnboarding({ users, workspaceId, subscription }),
-    // if workspace had a program from before and is upgrading to an eligible plan, reactivate it
-    updatedWorkspace.defaultProgramId &&
-      wouldGainPartnerAccess({
-        currentPlan: "free",
-        newPlan: updatedWorkspace.plan,
-      }) &&
-      reactivateProgram(updatedWorkspace.defaultProgramId),
-    // If no programOnboarding data (Links trial), send TrialStartedEmail
-    // For program trial we send it in create-program.ts
+
     subscription.status === "trialing" &&
-      !updatedWorkspace.store?.["programOnboarding"] &&
       sendBatchEmail(
         users.map((user) => ({
           to: user.email as string,
@@ -205,17 +187,6 @@ async function completeOnboarding({
       userIds: users.map(({ id }) => id),
       step: "completed",
     }),
-
-    // Create program based on programOnboarding data
-    users.length > 0 &&
-      workspace.store?.["programOnboarding"] &&
-      createProgram({
-        workspace,
-        user: users[0],
-      }).catch((error) => {
-        console.error("Failed to create program in completeOnboarding", error);
-        return;
-      }),
 
     // Claim saved domain (only if subscription is active)
     subscription.status === "active" &&

@@ -4,13 +4,13 @@ import { parseRequestBody } from "@/lib/api/utils";
 import { validateAllowedHostnames } from "@/lib/api/validate-allowed-hostnames";
 import { deleteWorkspace } from "@/lib/api/workspaces/delete-workspace";
 import { prefixWorkspaceId } from "@/lib/api/workspaces/workspace-id";
+import { getWorkspaceLogoKeyPrefix } from "@/lib/api/workspaces/workspace-logo";
 import { withWorkspace } from "@/lib/auth";
 import { getFeatureFlags } from "@/lib/edge-config";
 import { jackson } from "@/lib/jackson";
 import { prisma } from "@/lib/prisma";
 import { mergeSiteVisitTrackingSettings } from "@/lib/sitemaps/site-visit-tracking";
 import { storage } from "@/lib/storage";
-import { redis } from "@/lib/upstash";
 import {
   createWorkspaceSchema,
   siteVisitTrackingSettingsPatchSchema,
@@ -109,7 +109,7 @@ export const PATCH = withWorkspace(
 
     const logoUploaded = logo
       ? await storage.upload({
-          key: `workspaces/${prefixWorkspaceId(workspace.id)}/logo_${nanoid(7)}`,
+          key: `${getWorkspaceLogoKeyPrefix(workspace.id)}${nanoid(7)}`,
           body: logo,
         })
       : null;
@@ -216,23 +216,20 @@ export const PATCH = withWorkspace(
         },
       });
 
-      if (updatedWorkspace.slug !== workspace.slug) {
-        await Promise.allSettled([
-          prisma.user.updateMany({
-            where: {
-              defaultWorkspace: workspace.slug,
-            },
-            data: {
-              defaultWorkspace: updatedWorkspace.slug,
-            },
-          }),
-          // refresh the workspace product cache for both workspaces
-          redis.del(
-            `workspace:product:${updatedWorkspace.slug}`,
-            `workspace:product:${workspace.slug}`,
-          ),
-        ]);
-      }
+      await Promise.allSettled([
+        ...(updatedWorkspace.slug !== workspace.slug
+          ? [
+              prisma.user.updateMany({
+                where: {
+                  defaultWorkspace: workspace.slug,
+                },
+                data: {
+                  defaultWorkspace: updatedWorkspace.slug,
+                },
+              }),
+            ]
+          : []),
+      ]);
 
       waitUntil(
         (async () => {
@@ -295,14 +292,6 @@ export const PUT = PATCH;
 // DELETE /api/workspaces/[idOrSlug] – delete a specific project
 export const DELETE = withWorkspace(
   async ({ workspace }) => {
-    if (workspace.defaultProgramId) {
-      throw new DubApiError({
-        code: "bad_request",
-        message:
-          "You cannot delete a workspace with an active partner program.",
-      });
-    }
-
     await deleteWorkspace(workspace);
 
     return NextResponse.json(workspace);

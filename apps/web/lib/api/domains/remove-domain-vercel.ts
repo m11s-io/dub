@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/prisma";
 import { getApexDomain } from "@dub/utils";
+import { assertValidDomainFormat } from "./utils";
 
 export const removeDomainFromVercel = async (domain: string) => {
+  assertValidDomainFormat(domain);
+
   const apexDomain = getApexDomain(`https://${domain}`);
   const domains = await prisma.domain.findMany({
     where: {

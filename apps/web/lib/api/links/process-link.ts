@@ -1,4 +1,3 @@
-import { isBlacklistedDomain } from "@/lib/edge-config";
 import { verifyFolderAccess } from "@/lib/folder/permissions";
 import { checkIfUserExists, getRandomKey } from "@/lib/planetscale";
 import { prisma } from "@/lib/prisma";
@@ -18,7 +17,12 @@ import {
 } from "@dub/utils";
 import { Project, WorkspaceRole } from "@prisma/client";
 import { combineTagIds } from "../tags/combine-tag-ids";
-import { businessFeaturesCheck, proFeaturesCheck } from "./plan-features-check";
+import { maliciousLinkCheck } from "./malicious-link-check";
+import {
+  businessFeaturesCheck,
+  dubLinkSubdomainCheck,
+  proFeaturesCheck,
+} from "./plan-features-check";
 import { keyChecks, processKey } from "./utils";
 
 export async function processLink<T extends Record<string, any>>({
@@ -29,7 +33,6 @@ export async function processLink<T extends Record<string, any>>({
   skipKeyChecks = false, // only skip when key doesn't change (e.g. when editing a link)
   skipExternalIdChecks = false, // only skip when externalId doesn't change (e.g. when editing a link)
   skipFolderChecks = false, // only skip for update / upsert links
-  skipProgramChecks = false, // only skip for when program is already validated
 }: {
   payload: NewLinkProps & T;
   workspace?: Pick<Project, "id" | "plan"> & {
@@ -40,7 +43,6 @@ export async function processLink<T extends Record<string, any>>({
   skipKeyChecks?: boolean;
   skipExternalIdChecks?: boolean;
   skipFolderChecks?: boolean;
-  skipProgramChecks?: boolean;
 }): Promise<
   | {
       link: NewLinkProps & T;
@@ -67,18 +69,17 @@ export async function processLink<T extends Record<string, any>>({
     tagNames,
     folderId,
     externalId,
-    tenantId,
-    partnerId,
-    programId,
     webhookIds,
     testVariants,
+    ios,
+    android,
+    geo,
   } = payload;
 
   let expiresAt: string | Date | null | undefined = payload.expiresAt;
   let testCompletedAt: string | Date | null | undefined =
     payload.testCompletedAt;
 
-  let defaultProgramFolderId: string | null = null;
   const tagIds = combineTagIds(payload);
 
   // if URL is defined, perform URL checks
@@ -111,6 +112,17 @@ export async function processLink<T extends Record<string, any>>({
     };
   }
 
+  const domains = workspace
+    ? await prisma.domain.findMany({
+        where: { projectId: workspace.id },
+      })
+    : [];
+
+  // if domain is not defined, set it to the workspace's primary domain
+  if (!domain) {
+    domain = domains?.find((d) => d.primary)?.slug || "dub.sh";
+  }
+
   // free plan restrictions
   if (!workspace || workspace.plan === "free") {
     if (key === "_root" && url) {
@@ -122,8 +134,9 @@ export async function processLink<T extends Record<string, any>>({
       };
     }
     try {
-      businessFeaturesCheck(payload);
+      dubLinkSubdomainCheck(domain);
       proFeaturesCheck(payload);
+      businessFeaturesCheck(payload);
     } catch (error) {
       return {
         link: payload,
@@ -133,6 +146,7 @@ export async function processLink<T extends Record<string, any>>({
     }
   } else if (workspace.plan === "pro") {
     try {
+      dubLinkSubdomainCheck(domain);
       businessFeaturesCheck(payload);
     } catch (error) {
       return {
@@ -149,17 +163,6 @@ export async function processLink<T extends Record<string, any>>({
       error: "Conversion tracking must be enabled to use A/B testing.",
       code: "unprocessable_entity",
     };
-  }
-
-  const domains = workspace
-    ? await prisma.domain.findMany({
-        where: { projectId: workspace.id },
-      })
-    : [];
-
-  // if domain is not defined, set it to the workspace's primary domain
-  if (!domain) {
-    domain = domains?.find((d) => d.primary)?.slug || "dub.sh";
   }
 
   // checks for dub.sh and dub.link links
@@ -198,6 +201,15 @@ export async function processLink<T extends Record<string, any>>({
   } else if (isDubDomain(domain)) {
     // coerce type with ! cause we already checked if it exists
     const { allowedHostnames } = DUB_DOMAINS.find((d) => d.slug === domain)!;
+
+    if (ios || android || geo || testVariants) {
+      return {
+        link: payload,
+        error: `You cannot use geo targeting, device targeting, or A/B testing on ${domain} links.`,
+        code: "unprocessable_entity",
+      };
+    }
+
     const urlDomain = getDomainWithoutWWW(url) || "";
     const apexDomain = getApexDomain(url);
     if (
@@ -418,41 +430,6 @@ export async function processLink<T extends Record<string, any>>({
       }
     }
 
-    // Program validity checks
-    if (programId && !skipProgramChecks) {
-      const program = await prisma.program.findUnique({
-        where: { id: programId },
-        select: {
-          workspaceId: true,
-          defaultFolderId: true,
-          ...(!partnerId && tenantId
-            ? {
-                partners: {
-                  where: {
-                    tenantId,
-                  },
-                },
-              }
-            : {}),
-        },
-      });
-
-      if (!program || program.workspaceId !== workspace?.id) {
-        return {
-          link: payload,
-          error: "Program not found.",
-          code: "not_found",
-        };
-      }
-
-      if (!partnerId) {
-        partnerId =
-          program?.partners?.length > 0 ? program.partners[0].partnerId : null;
-      }
-
-      defaultProgramFolderId = program.defaultFolderId;
-    }
-
     // Webhook validity checks
     if (webhookIds && webhookIds.length > 0) {
       if (!workspace || workspace.plan === "free" || workspace.plan === "pro") {
@@ -558,8 +535,6 @@ export async function processLink<T extends Record<string, any>>({
       expiredUrl,
       testVariants,
       testCompletedAt,
-      // partnerId derived from payload or program enrollment
-      partnerId: partnerId || null,
       // make sure projectId is set to the current workspace
       projectId: workspace?.id || null,
       // if userId is passed, set it (we don't change the userId if it's already set, e.g. when editing a link)
@@ -569,23 +544,8 @@ export async function processLink<T extends Record<string, any>>({
       ...(webhookIds && {
         webhookIds,
       }),
-      folderId: folderId || defaultProgramFolderId,
+      folderId,
     },
     error: null,
   };
-}
-
-async function maliciousLinkCheck(url: string) {
-  const domain = getDomainWithoutWWW(url);
-
-  if (!domain) {
-    return false;
-  }
-
-  const domainBlacklisted = await isBlacklistedDomain(domain);
-  if (domainBlacklisted === true) {
-    return true;
-  }
-
-  return false;
 }

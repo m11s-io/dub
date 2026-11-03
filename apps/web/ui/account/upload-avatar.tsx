@@ -24,14 +24,16 @@ export default function UploadAvatar() {
       onSubmit={async (e) => {
         setUploading(true);
         e.preventDefault();
-        fetch("/api/user", {
-          method: "PATCH",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify({ image }),
-        }).then(async (res) => {
-          setUploading(false);
+
+        try {
+          const res = await fetch("/api/user", {
+            method: "PATCH",
+            headers: {
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ image }),
+          });
+
           if (res.status === 200) {
             await update();
             toast.success("Successfully updated your profile picture!");
@@ -39,7 +41,13 @@ export default function UploadAvatar() {
             const { error } = await res.json();
             toast.error(error.message);
           }
-        });
+        } catch (error) {
+          toast.error(
+            error instanceof Error ? error.message : "Something went wrong.",
+          );
+        } finally {
+          setUploading(false);
+        }
       }}
       className="rounded-xl border border-neutral-200 bg-white"
     >
@@ -71,8 +79,8 @@ export default function UploadAvatar() {
 
       <div className="flex flex-col items-start justify-start gap-4 rounded-b-xl border-t border-neutral-200 bg-neutral-50 px-6 py-4 sm:flex-row sm:items-center sm:justify-between sm:space-y-0 sm:py-3">
         <p className="text-sm text-neutral-500">
-          Square image recommended. Accepted file types: .png, .jpg. Max file
-          size: 2MB.
+          Square image recommended. Accepted file types: .png, .jpg, .webp,
+          .avif. Max file size: 2MB.
         </p>
         <div className="shrink-0">
           <Button

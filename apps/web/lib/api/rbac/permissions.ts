@@ -1,6 +1,6 @@
 import { WorkspaceRole } from "@prisma/client";
 
-export const PERMISSION_ACTIONS = [
+const PERMISSION_ACTIONS = [
   "workspaces.read",
   "workspaces.write",
   "links.read",
@@ -20,11 +20,8 @@ export const PERMISSION_ACTIONS = [
   "webhooks.write",
   "folders.read",
   "folders.write",
-  "groups.write",
-  "groups.read",
-  "messages.read",
-  "messages.write",
-  "payouts.write",
+  "customers.read",
+  "customers.write",
   "billing.write",
 ] as const;
 
@@ -131,33 +128,18 @@ export const ROLE_PERMISSIONS: {
     roles: ["owner", "member"],
   },
   {
-    action: "payouts.write",
-    description: "confirm payouts",
-    roles: ["owner", "billing"],
-  },
-  {
     action: "billing.write",
     description: "manage billing details",
     roles: ["owner", "billing"],
   },
   {
-    action: "groups.read",
-    description: "access groups",
+    action: "customers.read",
+    description: "access customers",
     roles: ["owner", "member", "viewer", "billing"],
   },
   {
-    action: "groups.write",
-    description: "manage groups",
-    roles: ["owner", "member"],
-  },
-  {
-    action: "messages.read",
-    description: "access messages",
-    roles: ["owner", "member", "viewer", "billing"],
-  },
-  {
-    action: "messages.write",
-    description: "manage messages",
+    action: "customers.write",
+    description: "manage customers",
     roles: ["owner", "member"],
   },
 ];

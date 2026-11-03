@@ -28,7 +28,7 @@ const exportQuerySchema = z
   })
   .passthrough();
 
-// GET /api/events/export – export events to CSV (with async support if >1000 events)
+// GET /api/events/export – export events to CSV (with async support if >1000 events)
 export const GET = withWorkspace(
   async ({ searchParams, workspace, session }) => {
     throwIfClicksUsageExceeded(workspace);
@@ -47,6 +47,8 @@ export const GET = withWorkspace(
       linkId,
       externalId,
     } = parsedParams;
+
+    const dataAvailableFrom = workspace.createdAt;
 
     let folderIdToVerify = getFirstFilterValue(folderId);
     if (!linkId && (externalId || (domain && key))) {
@@ -83,7 +85,7 @@ export const GET = withWorkspace(
 
     assertValidDateRangeForPlan({
       plan: workspace.plan,
-      dataAvailableFrom: workspace.createdAt,
+      dataAvailableFrom,
       interval,
       start,
       end,
@@ -94,7 +96,7 @@ export const GET = withWorkspace(
       ...parsedParams,
       groupBy: "count",
       workspaceId: workspace.id,
-      dataAvailableFrom: workspace.createdAt,
+      dataAvailableFrom,
     });
 
     // Extract the count based on event type
@@ -114,6 +116,7 @@ export const GET = withWorkspace(
           ...searchParams,
           workspaceId: workspace.id,
           userId: session.user.id,
+          dataAvailableFrom: dataAvailableFrom.toISOString(),
         },
       });
 
@@ -125,6 +128,7 @@ export const GET = withWorkspace(
       event,
       workspaceId: workspace.id,
       limit: MAX_EVENTS_TO_EXPORT,
+      dataAvailableFrom,
     });
 
     const data = response.map((row) =>
@@ -146,14 +150,7 @@ export const GET = withWorkspace(
     });
   },
   {
-    requiredPlan: [
-      "business",
-      "business plus",
-      "business extra",
-      "business max",
-      "advanced",
-      "enterprise",
-    ],
+    requiredPlan: ["business", "advanced", "enterprise"],
     requiredPermissions: ["analytics.read"],
   },
 );

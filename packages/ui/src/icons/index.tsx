@@ -11,7 +11,6 @@ export * from "./dub-analytics";
 export * from "./dub-api";
 export * from "./dub-crafted-shield";
 export * from "./dub-links";
-export * from "./dub-partners";
 export * from "./dub-product-icon";
 export * from "./expanding-arrow";
 export * from "./file-pen";
@@ -37,9 +36,14 @@ export * from "./loading-spinner";
 export * from "./anthropic";
 export * from "./beehiiv";
 export * from "./bing";
+export * from "./chatgpt-icon";
+export * from "./claude";
+export * from "./cloudflare";
+export * from "./cursor";
 export * from "./facebook";
 export * from "./github";
 export * from "./google";
+export * from "./grok";
 export * from "./instagram";
 export * from "./linkedin";
 export * from "./openai";
@@ -50,6 +54,7 @@ export * from "./slack-colorful";
 export * from "./tiktok";
 export * from "./twitter";
 export * from "./unsplash";
+export * from "./vercel";
 export * from "./veriff";
 export * from "./youtube";
 
@@ -80,6 +85,8 @@ export * from "./default-domains/figma";
 export * from "./default-domains/github-enhanced";
 export * from "./default-domains/google-enhanced";
 export * from "./default-domains/spotify";
+
+export * from "./with-fill-variant";
 
 // Nucleo icons
 export * from "./nucleo";

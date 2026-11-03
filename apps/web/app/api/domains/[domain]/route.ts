@@ -1,6 +1,7 @@
 import { addDomainToVercel } from "@/lib/api/domains/add-domain-vercel";
 import { getDomainOrThrow } from "@/lib/api/domains/get-domain-or-throw";
 import { markDomainAsDeleted } from "@/lib/api/domains/mark-domain-deleted";
+import { parseDomainJsonConfig } from "@/lib/api/domains/parse-domain-json-config";
 import { queueDomainUpdate } from "@/lib/api/domains/queue-domain-update";
 import { removeDomainFromVercel } from "@/lib/api/domains/remove-domain-vercel";
 import { transformDomain } from "@/lib/api/domains/transform-domain";
@@ -14,7 +15,6 @@ import { prisma } from "@/lib/prisma";
 import { storage } from "@/lib/storage";
 import { updateDomainBodySchema } from "@/lib/zod/schemas/domains";
 import { combineWords, nanoid, R2_URL } from "@dub/utils";
-import { Prisma } from "@prisma/client";
 import { waitUntil } from "@vercel/functions";
 import { revalidatePath, revalidateTag } from "next/cache";
 import { NextResponse } from "next/server";
@@ -49,11 +49,7 @@ export const PATCH = withWorkspace(
       domain: params.domain,
       dubDomainChecks: true,
     });
-    const {
-      slug: currentDomain,
-      registeredDomain,
-      partnerProgram,
-    } = existingDomain;
+    const { slug: currentDomain, registeredDomain } = existingDomain;
 
     const {
       slug: newDomain,
@@ -96,6 +92,21 @@ export const PATCH = withWorkspace(
         });
       }
     }
+
+    const parsedAssetLinks = parseDomainJsonConfig({
+      value: assetLinks,
+      field: "assetLinks",
+    });
+
+    const parsedAppleAppSiteAssociation = parseDomainJsonConfig({
+      value: appleAppSiteAssociation,
+      field: "appleAppSiteAssociation",
+    });
+
+    const parsedDeepviewData = parseDomainJsonConfig({
+      value: deepviewData,
+      field: "deepviewData",
+    });
 
     const domainChanged =
       newDomain && newDomain.toLowerCase() !== currentDomain.toLowerCase();
@@ -146,16 +157,14 @@ export const PATCH = withWorkspace(
         expiredUrl,
         notFoundUrl,
         logo: deleteLogo ? null : logoUploaded?.url || existingDomain.logo,
-        ...(assetLinks !== undefined && {
-          assetLinks: assetLinks ? JSON.parse(assetLinks) : Prisma.DbNull,
+        ...(parsedAssetLinks !== undefined && {
+          assetLinks: parsedAssetLinks,
         }),
-        ...(appleAppSiteAssociation !== undefined && {
-          appleAppSiteAssociation: appleAppSiteAssociation
-            ? JSON.parse(appleAppSiteAssociation)
-            : Prisma.DbNull,
+        ...(parsedAppleAppSiteAssociation !== undefined && {
+          appleAppSiteAssociation: parsedAppleAppSiteAssociation,
         }),
-        ...(deepviewData !== undefined && {
-          deepviewData: deepviewData ? JSON.parse(deepviewData) : Prisma.DbNull,
+        ...(parsedDeepviewData !== undefined && {
+          deepviewData: parsedDeepviewData,
         }),
       },
       include: {
@@ -211,29 +220,7 @@ export const PATCH = withWorkspace(
             queueDomainUpdate({
               oldDomain: currentDomain,
               newDomain: newDomain,
-              ...(partnerProgram && { programId: partnerProgram.id }),
             }),
-
-            ...(partnerProgram
-              ? [
-                  prisma.program.update({
-                    where: {
-                      id: partnerProgram.id,
-                    },
-                    data: {
-                      domain: newDomain,
-                    },
-                  }),
-                  prisma.partnerGroupDefaultLink.updateMany({
-                    where: {
-                      programId: partnerProgram.id,
-                    },
-                    data: {
-                      domain: newDomain,
-                    },
-                  }),
-                ]
-              : []),
           ]);
 
           // only need to run invalidations on currentDomain if domain was not changed
@@ -277,11 +264,7 @@ export const PATCH = withWorkspace(
 // DELETE /api/domains/[domain] - delete a workspace's domain
 export const DELETE = withWorkspace(
   async ({ params, workspace }) => {
-    const {
-      slug: domain,
-      registeredDomain,
-      partnerProgram,
-    } = await getDomainOrThrow({
+    const { slug: domain, registeredDomain } = await getDomainOrThrow({
       workspace,
       domain: params.domain,
       dubDomainChecks: true,
@@ -291,14 +274,6 @@ export const DELETE = withWorkspace(
       throw new DubApiError({
         code: "forbidden",
         message: "You cannot delete a Dub-provisioned domain.",
-      });
-    }
-
-    if (partnerProgram) {
-      throw new DubApiError({
-        code: "forbidden",
-        message:
-          "You cannot delete a domain that is actively in use in a partner program.",
       });
     }
 

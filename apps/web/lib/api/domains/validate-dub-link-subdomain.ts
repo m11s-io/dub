@@ -6,17 +6,9 @@ const DUB_LINK_SUFFIX = ".dub.link";
 
 type ApiErrorCode = z.infer<typeof ErrorCode>;
 
-export function validateDubLinkSubdomain(
-  slug: string,
+function validateDubLinkLabel(
+  label: string,
 ): { error: string; code: ApiErrorCode } | null {
-  const lower = slug.trim().toLowerCase();
-
-  if (!lower.endsWith(DUB_LINK_SUFFIX)) {
-    return null;
-  }
-
-  const label = lower.slice(0, -DUB_LINK_SUFFIX.length);
-
   if (!label || label.includes(".")) {
     return {
       error: "Invalid .dub.link subdomain format.",
@@ -49,4 +41,16 @@ export function validateDubLinkSubdomain(
   }
 
   return null;
+}
+
+export function validateDubLinkSubdomain(
+  slug: string,
+): { error: string; code: ApiErrorCode } | null {
+  const lower = slug.trim().toLowerCase();
+
+  if (!lower.endsWith(DUB_LINK_SUFFIX)) {
+    return null;
+  }
+
+  return validateDubLinkLabel(lower.slice(0, -DUB_LINK_SUFFIX.length));
 }

@@ -1,17 +1,10 @@
 import { DubApiError } from "@/lib/api/errors";
 import { withSession } from "@/lib/auth";
-import { confirmEmailChange } from "@/lib/auth/confirm-email-change";
+import { requestEmailChange } from "@/lib/auth/request-email-change";
 import { prisma } from "@/lib/prisma";
 import { storage } from "@/lib/storage";
 import { uploadedImageSchema } from "@/lib/zod/schemas/images";
-import {
-  APP_DOMAIN,
-  APP_HOSTNAMES,
-  PARTNERS_DOMAIN,
-  R2_URL,
-  nanoid,
-  trim,
-} from "@dub/utils";
+import { APP_DOMAIN, R2_URL, nanoid, trim } from "@dub/utils";
 import { waitUntil } from "@vercel/functions";
 import { NextResponse } from "next/server";
 import * as z from "zod/v4";
@@ -38,7 +31,6 @@ export const GET = withSession(async ({ session }) => {
         image: true,
         source: true,
         defaultWorkspace: true,
-        defaultPartnerId: true,
         passwordHash: true,
         createdAt: true,
       },
@@ -108,13 +100,12 @@ export const PATCH = withSession(async ({ req, session }) => {
       });
     }
 
-    const hostName = req.headers.get("host") || "";
-
-    await confirmEmailChange({
+    await requestEmailChange({
       email: session.user.email,
       newEmail: email,
       identifier: session.user.id,
-      hostName: APP_HOSTNAMES.has(hostName) ? APP_DOMAIN : PARTNERS_DOMAIN,
+      userId: session.user.id,
+      hostName: APP_DOMAIN,
     });
   }
 
@@ -124,7 +115,7 @@ export const PATCH = withSession(async ({ req, session }) => {
     },
     data: {
       ...(name && { name }),
-      ...(image && { image }),
+      ...(image !== undefined && { image: image ?? null }),
       ...(source && { source }),
       ...(defaultWorkspace && { defaultWorkspace }),
     },

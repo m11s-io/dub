@@ -5,47 +5,13 @@ import { E2E_LINK, E2E_TRACK_CLICK_HEADERS } from "../utils/resource";
 // Helper function to verify click tracking response
 const expectValidClickResponse = ({
   response,
-  hasPartner = false,
-  hasDiscount = false,
 }: {
   response: { status: number; data: any };
-  hasPartner?: boolean;
-  hasDiscount?: boolean;
 }) => {
   expect(response.status).toEqual(200);
   expect(response.data).toStrictEqual({
     clickId: expect.any(String),
-    ...(hasPartner && {
-      partner: expect.objectContaining({
-        id: expect.any(String),
-        name: expect.any(String),
-        image: expect.any(String),
-      }),
-    }),
-    ...(hasDiscount && {
-      discount: expect.objectContaining({
-        id: expect.any(String),
-        amount: expect.any(Number),
-        type: expect.any(String),
-        maxDuration: expect.any(Number),
-        couponId: expect.any(String),
-        couponTestId: expect.any(String),
-      }),
-    }),
   });
-
-  // Check nullish fields separately if partner exists
-  if (hasPartner && response.data.partner) {
-    const { groupId, tenantId } = response.data.partner;
-    expect(
-      groupId === null || groupId === undefined || typeof groupId === "string",
-    ).toBe(true);
-    expect(
-      tenantId === null ||
-        tenantId === undefined ||
-        typeof tenantId === "string",
-    ).toBe(true);
-  }
 };
 
 describe("POST /track/click", async () => {
@@ -87,24 +53,6 @@ describe("POST /track/click", async () => {
     });
 
     expect(response1.data.clickId).toEqual(response2.data.clickId);
-  });
-
-  test("partner link should return partner data", async () => {
-    const clickResponse = await http.post<{ clickId: string }>({
-      path: "/track/click",
-      headers: E2E_TRACK_CLICK_HEADERS,
-      body: {
-        domain: "getacme.link",
-        key: "derek",
-      },
-    });
-
-    expect(clickResponse.status).toEqual(200);
-    expectValidClickResponse({
-      response: clickResponse,
-      hasPartner: true,
-      hasDiscount: true,
-    });
   });
 
   test("missing domain should return validation error", async () => {

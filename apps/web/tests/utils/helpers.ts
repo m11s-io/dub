@@ -1,8 +1,14 @@
 import { generateRandomName } from "@/lib/names";
 import { nanoid, randomValue } from "@dub/utils";
+import { customAlphabet } from "nanoid";
 import { expect } from "vitest";
 
 export const randomId = (length = 24) => nanoid(length);
+
+// Digits-only keys avoid flaky 422s on dub.sh/dub.link from isBlacklistedKey
+// substring matches against alphanumeric nanoids.
+export const randomKey = (length = 24) =>
+  customAlphabet("0123456789", length)();
 
 // Generate random customer data
 export const randomCustomer = ({
@@ -21,14 +27,6 @@ export const randomCustomer = ({
 
 export const randomTagName = (length?: number) => {
   return `e2e-${randomId(length)}`;
-};
-
-export const randomPartnerEmail = ({
-  domain = "dub-internal-test.com",
-}: {
-  domain?: string;
-} = {}) => {
-  return `${generateRandomName().split(" ").join(".").toLowerCase()}@${domain}`;
 };
 
 export const randomSaleAmount = () => {

@@ -1,8 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { Webhook } from "@prisma/client";
-import { WebhookTrigger, WorkspaceProps } from "../types";
+import { WorkspaceProps } from "../types";
 import { sendWebhooks } from "./qstash";
-import { WebhookEventPayload } from "./types";
+import type { WebhookEventPayload, WebhookTrigger } from "./types";
 
 // Send workspace level webhook
 export const sendWorkspaceWebhook = async ({
@@ -14,7 +14,7 @@ export const sendWorkspaceWebhook = async ({
   trigger: WebhookTrigger;
   workspace: Pick<WorkspaceProps, "id" | "webhookEnabled">;
   data: WebhookEventPayload;
-  webhooks?: Pick<Webhook, "id" | "url" | "secret">[]; // optionally accept webhooks when sending bulk webhooks (eg: payout.confirmed)
+  webhooks?: Pick<Webhook, "id" | "url" | "secret">[]; // optionally accept webhooks when sending bulk webhooks
 }) => {
   if (!workspace.webhookEnabled) {
     return;

@@ -1,11 +1,7 @@
 import { generateFilters } from "@/lib/ai/generate-filters";
 import { VALID_ANALYTICS_FILTERS } from "@/lib/analytics/constants";
 import useCustomer from "@/lib/swr/use-customer";
-import usePartner from "@/lib/swr/use-partner";
-import usePartnerCustomer from "@/lib/swr/use-partner-customer";
-import { usePartnerTags } from "@/lib/swr/use-partner-tags";
 import { CustomerAvatar } from "@/ui/customers/customer-avatar";
-import { PartnerAvatar } from "@/ui/partners/partner-avatar";
 import { CountryFlag } from "@/ui/shared/country-flag";
 import { readStreamableValue } from "@ai-sdk/rsc";
 import {
@@ -17,6 +13,7 @@ import {
   UTM_PARAMETERS,
 } from "@dub/ui";
 import {
+  Bolt,
   Calendar6,
   Cube,
   CursorRays,
@@ -36,8 +33,6 @@ import {
   Tag,
   User,
   UserPlus,
-  Users,
-  Users6,
   Window,
 } from "@dub/ui/icons";
 import {
@@ -66,7 +61,6 @@ import {
 import { FolderIcon } from "../folders/folder-icon";
 import { LinkIcon } from "../links/link-icon";
 import TagBadge from "../links/tag-badge";
-import { GroupColorCircle } from "../partners/groups/group-color-circle";
 import {
   AnalyticsContext,
   AnalyticsDashboardProps,
@@ -78,12 +72,9 @@ import { TRIGGER_DISPLAY } from "./trigger-display";
 import { useAnalyticsFilterOption } from "./utils";
 
 export function useAnalyticsFilters({
-  partnerPage,
   dashboardProps,
   context,
-  programPage = false,
 }: {
-  partnerPage?: boolean;
   dashboardProps?: AnalyticsDashboardProps;
   context?: Pick<
     ContextType<typeof AnalyticsContext>,
@@ -93,7 +84,6 @@ export function useAnalyticsFilters({
     | "saleUnit"
     | "requiresUpgrade"
   >;
-  programPage?: boolean;
 } = {}) {
   const { selectedTab, saleUnit } = context ?? useContext(AnalyticsContext);
 
@@ -111,38 +101,10 @@ export function useAnalyticsFilters({
     [tagIdParsed],
   );
 
-  const partnerTagIdParsed = useMemo(
-    () => parseFilterValue(searchParamsObj.partnerTagId),
-    [searchParamsObj.partnerTagId],
-  );
-
-  const { partnerTags: partnerTagsById } = usePartnerTags(
-    {
-      query: { ids: partnerTagIdParsed?.values },
-      enabled: !!partnerTagIdParsed?.values?.length && !!programPage,
-    },
-    { keepPreviousData: true },
-  );
-
-  const partnerTagIdToName = useMemo(
-    () => new Map((partnerTagsById ?? []).map((t) => [t.id, t.name])),
-    [partnerTagsById],
-  );
-
   const selectedCustomerId = searchParamsObj.customerId;
 
-  const { data: selectedCustomerWorkspace } = useCustomer({
+  const { data: selectedCustomer } = useCustomer({
     customerId: selectedCustomerId,
-  });
-  const { data: selectedCustomerPartner } = usePartnerCustomer({
-    customerId: selectedCustomerId,
-  });
-
-  const selectedCustomer = selectedCustomerPartner || selectedCustomerWorkspace;
-
-  const selectedPartnerId = searchParamsObj.partnerId;
-  const { partner: selectedPartner } = usePartner({
-    partnerId: selectedPartnerId,
   });
 
   const [requestedFilters, setRequestedFilters] = useState<string[]>([]);
@@ -182,16 +144,6 @@ export function useAnalyticsFilters({
             },
           ]
         : []),
-      // Handle partnerTagId special case
-      ...(partnerTagIdParsed?.values?.length
-        ? [
-            {
-              key: "partnerTagId",
-              operator: partnerTagIdParsed.operator as FilterOperator,
-              values: partnerTagIdParsed.values,
-            },
-          ]
-        : []),
       // Handle root special case
       ...(root
         ? [
@@ -221,10 +173,7 @@ export function useAnalyticsFilters({
     // Handle remaining filters via parseFilterValue (multi-value / negation). folderId included; tagId handled above.
     VALID_ANALYTICS_FILTERS.forEach((filter) => {
       // Skip special cases we handled above
-      if (
-        ["key", "tagId", "partnerTagId", "root", "customerId"].includes(filter)
-      )
-        return;
+      if (["key", "tagId", "root", "customerId"].includes(filter)) return;
       // Also skip date range filters and qr
       if (["interval", "start", "end", "qr"].includes(filter)) return;
       // Skip domain when domain+key identify a specific link (link chip / linkId handles that)
@@ -250,8 +199,6 @@ export function useAnalyticsFilters({
   }, [
     searchParamsObj,
     tagIdParsed,
-    partnerTagIdParsed,
-    partnerPage,
     selectedCustomerId,
     selectedCustomer,
     parseFilterParam,
@@ -281,21 +228,6 @@ export function useAnalyticsFilters({
   });
   const { data: domains } = useAnalyticsFilterOption("top_domains", {
     disabled: !isRequested("domain"),
-    omitGroupByFilterKey: true,
-    context,
-  });
-  const { data: partners } = useAnalyticsFilterOption("top_partners", {
-    disabled: !isRequested("partnerId"),
-    omitGroupByFilterKey: true,
-    context,
-  });
-  const { data: groups } = useAnalyticsFilterOption("top_groups", {
-    disabled: !isRequested("groupId"),
-    omitGroupByFilterKey: true,
-    context,
-  });
-  const { data: partnerTags } = useAnalyticsFilterOption("top_partner_tags", {
-    disabled: !isRequested("partnerTagId"),
     omitGroupByFilterKey: true,
     context,
   });
@@ -336,6 +268,11 @@ export function useAnalyticsFilters({
   });
   const { data: triggers } = useAnalyticsFilterOption("triggers", {
     disabled: !isRequested("trigger"),
+    omitGroupByFilterKey: true,
+    context,
+  });
+  const { data: eventNames } = useAnalyticsFilterOption("event_names", {
+    disabled: !isRequested("eventName") || selectedTab === "clicks",
     omitGroupByFilterKey: true,
     context,
   });
@@ -417,7 +354,7 @@ export function useAnalyticsFilters({
         icon: QRCode,
       },
     ],
-    [dashboardProps, partnerPage],
+    [dashboardProps],
   );
 
   const [streaming, setStreaming] = useState<boolean>(false);
@@ -501,133 +438,78 @@ export function useAnalyticsFilters({
         ? dashboardProps.key
           ? []
           : [DomainFilterItem, LinkFilterItem]
-        : programPage
-          ? [
-              {
-                key: "partnerId",
-                icon: Users,
-                label: "Partner",
-                options:
-                  partners?.map(({ partner, ...rest }) => {
-                    return {
-                      value: partner.id,
-                      label: partner.name,
-                      icon: (
-                        <PartnerAvatar partner={partner} className="size-4" />
-                      ),
-                      right: getFilterOptionTotal(rest),
-                    };
-                  }) ?? null,
+        : [
+            {
+              key: "folderId",
+              icon: Folder,
+              label: "Folder",
+              getOptionIcon: (_value, props) => {
+                const folder = props.option?.data?.folder;
+                return folder ? (
+                  <FolderIcon
+                    folder={folder}
+                    shape="square"
+                    iconClassName="size-3"
+                  />
+                ) : null;
               },
-              {
-                key: "groupId",
-                icon: Users6,
-                label: "Partner Group",
-                getOptionIcon: (_value, props) => {
-                  const group = props.option?.data?.group;
-                  return group ? <GroupColorCircle group={group} /> : null;
-                },
-                options:
-                  groups?.map(({ group, ...rest }) => ({
-                    value: group.id,
-                    icon: <GroupColorCircle group={group} />,
-                    label: group.name,
-                    data: { group },
-                    right: getFilterOptionTotal(rest),
-                  })) ?? null,
+              options:
+                folders?.map(({ folder, ...rest }) => ({
+                  value: folder.id,
+                  icon: (
+                    <FolderIcon
+                      folder={folder}
+                      shape="square"
+                      iconClassName="size-3"
+                    />
+                  ),
+                  label: folder.name,
+                  data: { folder },
+                  right: getFilterOptionTotal(rest),
+                })) ?? null,
+            },
+            {
+              key: "tagId",
+              icon: Tag,
+              label: "Tag",
+              getOptionIcon: (_value, props) => {
+                const tagColor = props.option?.data?.color;
+                return tagColor ? (
+                  <TagBadge color={tagColor} withIcon className="sm:p-1" />
+                ) : null;
               },
-              {
-                key: "partnerTagId",
-                icon: Tag,
-                label: "Partner Tag",
-                multiple: true,
-                getOptionLabel: (value) =>
-                  partnerTagIdToName.get(value) ?? null,
-                options:
-                  partnerTags?.map(({ partnerTag, ...rest }) => ({
-                    value: partnerTag.id,
-                    label: partnerTag.name,
-                    right: getFilterOptionTotal(rest),
-                  })) ?? null,
-              },
-              SaleTypeFilterItem,
-            ]
-          : partnerPage
-            ? [LinkFilterItem, SaleTypeFilterItem]
-            : [
+              options:
+                linkTags?.map(({ tag: { id, name, color }, ...rest }) => ({
+                  value: id,
+                  icon: <TagBadge color={color} withIcon className="sm:p-1" />,
+                  label: name,
+                  data: { color },
+                  right: getFilterOptionTotal(rest),
+                })) ?? null,
+            },
+            DomainFilterItem,
+            LinkFilterItem,
+            {
+              key: "root",
+              icon: Sliders,
+              label: "Link type",
+              hideMultipleIcons: true,
+              singleSelect: true,
+              options: [
                 {
-                  key: "folderId",
-                  icon: Folder,
-                  label: "Folder",
-                  getOptionIcon: (_value, props) => {
-                    const folder = props.option?.data?.folder;
-                    return folder ? (
-                      <FolderIcon
-                        folder={folder}
-                        shape="square"
-                        iconClassName="size-3"
-                      />
-                    ) : null;
-                  },
-                  options:
-                    folders?.map(({ folder, ...rest }) => ({
-                      value: folder.id,
-                      icon: (
-                        <FolderIcon
-                          folder={folder}
-                          shape="square"
-                          iconClassName="size-3"
-                        />
-                      ),
-                      label: folder.name,
-                      data: { folder },
-                      right: getFilterOptionTotal(rest),
-                    })) ?? null,
+                  value: "true",
+                  icon: Globe2,
+                  label: "Root domain link",
                 },
                 {
-                  key: "tagId",
-                  icon: Tag,
-                  label: "Tag",
-                  getOptionIcon: (_value, props) => {
-                    const tagColor = props.option?.data?.color;
-                    return tagColor ? (
-                      <TagBadge color={tagColor} withIcon className="sm:p-1" />
-                    ) : null;
-                  },
-                  options:
-                    linkTags?.map(({ tag: { id, name, color }, ...rest }) => ({
-                      value: id,
-                      icon: (
-                        <TagBadge color={color} withIcon className="sm:p-1" />
-                      ),
-                      label: name,
-                      data: { color },
-                      right: getFilterOptionTotal(rest),
-                    })) ?? null,
+                  value: "false",
+                  icon: Hyperlink,
+                  label: "Regular short link",
                 },
-                DomainFilterItem,
-                LinkFilterItem,
-                {
-                  key: "root",
-                  icon: Sliders,
-                  label: "Link type",
-                  hideMultipleIcons: true,
-                  singleSelect: true,
-                  options: [
-                    {
-                      value: "true",
-                      icon: Globe2,
-                      label: "Root domain link",
-                    },
-                    {
-                      value: "false",
-                      icon: Hyperlink,
-                      label: "Regular short link",
-                    },
-                  ],
-                },
-                SaleTypeFilterItem,
-              ]),
+              ],
+            },
+            SaleTypeFilterItem,
+          ]),
       {
         key: "country",
         icon: FlagWavy,
@@ -750,27 +632,35 @@ export function useAnalyticsFilters({
             right: getFilterOptionTotal(rest),
           })) ?? null,
       },
-      ...(programPage
-        ? []
-        : [
-            {
-              key: "trigger",
-              icon: CursorRays,
-              label: "Trigger",
-              hideMultipleIcons: true,
-              options:
-                triggers?.map(({ trigger, ...rest }) => {
-                  const { title, icon } = TRIGGER_DISPLAY[trigger];
-                  return {
-                    value: trigger,
-                    label: title,
-                    icon,
-                    right: getFilterOptionTotal(rest),
-                  };
-                }) ?? null,
-              separatorAfter: true,
-            },
-          ]),
+      {
+        key: "trigger",
+        icon: CursorRays,
+        label: "Trigger",
+        hideMultipleIcons: true,
+        options:
+          triggers?.map(({ trigger, ...rest }) => {
+            const { title, icon } = TRIGGER_DISPLAY[trigger];
+            return {
+              value: trigger,
+              label: title,
+              icon,
+              right: getFilterOptionTotal(rest),
+            };
+          }) ?? null,
+        separatorAfter: true,
+      },
+      {
+        key: "eventName",
+        icon: Bolt,
+        label: "Event name",
+        hideInFilterDropdown: selectedTab === "clicks",
+        options:
+          eventNames?.map(({ eventName, ...rest }) => ({
+            value: eventName,
+            label: eventName,
+            right: getFilterOptionTotal(rest),
+          })) ?? null,
+      },
       {
         key: "referer",
         icon: ReferredVia,
@@ -786,59 +676,55 @@ export function useAnalyticsFilters({
             right: getFilterOptionTotal(rest),
           })) ?? null,
       },
-      ...(programPage
-        ? []
-        : [
-            {
-              key: "refererUrl",
-              icon: ReferredVia,
-              label: "Referrer URL",
-              getOptionIcon: (value, props) => {
-                if (typeof value !== "string") return null;
-                return <ReferrerIcon display={value} className="h-4 w-4" />;
-              },
-              options:
-                refererUrls?.map(({ refererUrl, ...rest }) => ({
-                  value: refererUrl,
-                  label: refererUrl,
-                  right: getFilterOptionTotal(rest),
-                })) ?? null,
-            },
-            {
-              key: "url",
-              icon: LinkBroken,
-              label: "Destination URL",
-              getOptionIcon: (_, props) => (
-                <LinkLogo
-                  apexDomain={getApexDomain(props.option?.value)}
-                  className="size-4 sm:size-4"
-                />
-              ),
-              options:
-                baseUrls?.map(({ url, ...rest }) => ({
-                  value: url,
-                  label: url.replace(/^https?:\/\//, "").replace(/\/$/, ""),
-                  right: getFilterOptionTotal(rest),
-                })) ?? null,
-            },
-            ...UTM_PARAMETERS.filter(({ key }) => key !== "ref").map(
-              ({ key, label, icon: Icon }) => ({
-                key,
-                icon: Icon,
-                label: `UTM ${label}`,
-                getOptionIcon: (value) => {
-                  if (typeof value !== "string") return null;
-                  return <Icon display={value} className="h-4 w-4" />;
-                },
-                options:
-                  utmData[key]?.map((dt) => ({
-                    value: dt[key],
-                    label: dt[key],
-                    right: nFormatter(dt.count, { full: true }),
-                  })) ?? null,
-              }),
-            ),
-          ]),
+      {
+        key: "refererUrl",
+        icon: ReferredVia,
+        label: "Referrer URL",
+        getOptionIcon: (value, props) => {
+          if (typeof value !== "string") return null;
+          return <ReferrerIcon display={value} className="h-4 w-4" />;
+        },
+        options:
+          refererUrls?.map(({ refererUrl, ...rest }) => ({
+            value: refererUrl,
+            label: refererUrl,
+            right: getFilterOptionTotal(rest),
+          })) ?? null,
+      },
+      {
+        key: "url",
+        icon: LinkBroken,
+        label: "Destination URL",
+        getOptionIcon: (_, props) => (
+          <LinkLogo
+            apexDomain={getApexDomain(props.option?.value)}
+            className="size-4 sm:size-4"
+          />
+        ),
+        options:
+          baseUrls?.map(({ url, ...rest }) => ({
+            value: url,
+            label: url.replace(/^https?:\/\//, "").replace(/\/$/, ""),
+            right: getFilterOptionTotal(rest),
+          })) ?? null,
+      },
+      ...UTM_PARAMETERS.filter(({ key }) => key !== "ref").map(
+        ({ key, label, icon: Icon }) => ({
+          key,
+          icon: Icon,
+          label: `UTM ${label}`,
+          getOptionIcon: (value) => {
+            if (typeof value !== "string") return null;
+            return <Icon display={value} className="h-4 w-4" />;
+          },
+          options:
+            utmData[key]?.map((dt) => ({
+              value: dt[key],
+              label: dt[key],
+              right: nFormatter(dt.count, { full: true }),
+            })) ?? null,
+        }),
+      ),
       // additional fields that are hidden in filter dropdown
       {
         key: "customerId",
@@ -853,48 +739,26 @@ export function useAnalyticsFilters({
           ) : null;
         },
         getOptionPermalink: () => {
-          return programPage
-            ? `/${slug}/program/customers/${selectedCustomerId}`
-            : slug
-              ? `/${slug}/customers/${selectedCustomerId}`
-              : null;
-        },
-        options: [],
-      },
-      {
-        key: "partnerId",
-        icon: Users6,
-        label: "Partner",
-        hideInFilterDropdown: true,
-        getOptionIcon: () => {
-          return selectedPartner ? (
-            <PartnerAvatar partner={selectedPartner} className="size-4" />
-          ) : null;
-        },
-        getOptionLabel: () => {
-          return selectedPartner?.name ?? selectedPartnerId;
+          return slug ? `/${slug}/links/customers/${selectedCustomerId}` : null;
         },
         options: [],
       },
     ],
     [
       dashboardProps,
-      partnerPage,
       domains,
       links,
       linkTags,
       folders,
-      groups,
-      partnerTags,
-      partnerTagIdToName,
       selectedTagIds,
-      partnerTagIdParsed,
       selectedCustomerId,
       countries,
       cities,
       devices,
       browsers,
       os,
+      eventNames,
+      selectedTab,
       referers,
       refererUrls,
       baseUrls,

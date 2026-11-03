@@ -1,7 +1,7 @@
 "use client";
 
 import { clientAccessCheck } from "@/lib/client-access-check";
-import { wouldLosePartnerAccess } from "@/lib/plans/has-partner-access";
+import type { StripeCancellationFeedback } from "@/lib/stripe/cancellation-feedback";
 import useWorkspace from "@/lib/swr/use-workspace";
 import {
   Button,
@@ -11,13 +11,12 @@ import {
   SquareXmark,
   StripeIcon,
 } from "@dub/ui";
-import { cn } from "@dub/utils";
+import { cn, sleep } from "@dub/utils";
 import { Command } from "cmdk";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
-import { useConfirmModal } from "../modals/confirm-modal";
-import { usePlanChangeConfirmationModal } from "../modals/plan-change-confirmation-modal";
+import { useCancelSubscriptionModal } from "../modals/cancel-subscription-modal";
 import { ThreeDots } from "../shared/icons";
 
 export default function SubscriptionMenu() {
@@ -25,7 +24,6 @@ export default function SubscriptionMenu() {
     id: workspaceId,
     role,
     plan,
-    defaultProgramId,
     billingCycleEndsAt,
     subscriptionCanceledAt,
     mutate,
@@ -48,7 +46,7 @@ export default function SubscriptionMenu() {
     })
       .then(async (res) => {
         if (res.ok) {
-          const url = await res.json();
+          const { url } = await res.json();
           router.push(url);
         } else {
           const { error } = await res.json();
@@ -60,16 +58,24 @@ export default function SubscriptionMenu() {
       });
   };
 
-  const cancelSubscription = async () => {
+  const handleCancellation = async ({
+    feedback,
+    comment,
+  }: {
+    feedback: StripeCancellationFeedback;
+    comment: string;
+  }) => {
     setIsOpen(false);
     setClicked(true);
     return fetch(`/api/workspaces/${workspaceId}/billing/cancel`, {
       method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ feedback, comment }),
     })
       .then(async (res) => {
         if (res.ok) {
           // sleep for 2 seconds to make sure Stripe webhook was received, and then mutate
-          await new Promise((resolve) => setTimeout(resolve, 2000));
+          await sleep(2000);
           await mutate();
           toast.success(
             "Your subscription has been scheduled for cancellation at the end of the current period.",
@@ -77,6 +83,7 @@ export default function SubscriptionMenu() {
         } else {
           const { error } = await res.json();
           toast.error(error.message);
+          throw new Error(error.message);
         }
       })
       .finally(() => {
@@ -84,65 +91,24 @@ export default function SubscriptionMenu() {
       });
   };
 
-  // Check if canceling would lose partner access
-  const losesPartnerAccess =
-    plan &&
-    defaultProgramId &&
-    wouldLosePartnerAccess({ currentPlan: plan, newPlan: null });
-
-  const { setShowPlanChangeConfirmationModal, PlanChangeConfirmationModal } =
-    usePlanChangeConfirmationModal({
-      newPlan: "free",
-      newPeriod: "monthly",
-      newTier: 1,
-      onConfirm: async () => {
-        await cancelSubscription();
-        setShowPlanChangeConfirmationModal(false);
-      },
+  const { setShowCancelSubscriptionModal, CancelSubscriptionModal } =
+    useCancelSubscriptionModal({
+      billingCycleEndsAt,
+      onConfirm: handleCancellation,
     });
-  const { setShowConfirmModal, confirmModal } = useConfirmModal({
-    title: "Cancel subscription",
-    description: (
-      <p>
-        Your subscription will be scheduled for cancellation at the end of your
-        current billing period
-        {billingCycleEndsAt ? (
-          <span className="font-medium text-neutral-900">
-            {" "}
-            (
-            {new Date(billingCycleEndsAt).toLocaleDateString("en-US", {
-              month: "long",
-              day: "numeric",
-              year: "numeric",
-            })}
-            )
-          </span>
-        ) : (
-          ""
-        )}
-        . You will keep access until then.
-      </p>
-    ),
-    cancelText: "Not now",
-    confirmText: "Cancel subscription",
-    onConfirm: async () => {
-      await cancelSubscription();
-    },
-  });
 
   const handleCancelSubscription = () => {
     setIsOpen(false);
-    if (losesPartnerAccess) {
-      setShowPlanChangeConfirmationModal(true);
-    } else {
-      setShowConfirmModal(true);
-    }
+    setShowCancelSubscriptionModal(true);
   };
+
+  if (plan === "enterprise") {
+    return null;
+  }
 
   return (
     <>
-      <PlanChangeConfirmationModal />
-      {confirmModal}
+      <CancelSubscriptionModal />
       <Popover
         openPopover={isOpen}
         setOpenPopover={setIsOpen}
@@ -155,18 +121,16 @@ export default function SubscriptionMenu() {
                 onSelect={() => openBillingPortal()}
                 disabledTooltip={permissionsError}
               />
-              {plan !== "enterprise" && (
-                <MenuItem
-                  icon={SquareXmark}
-                  label="Cancel subscription"
-                  onSelect={handleCancelSubscription}
-                  disabledTooltip={
-                    subscriptionCanceledAt
-                      ? "Your subscription has already been scheduled for cancellation."
-                      : permissionsError
-                  }
-                />
-              )}
+              <MenuItem
+                icon={SquareXmark}
+                label="Cancel subscription"
+                onSelect={handleCancelSubscription}
+                disabledTooltip={
+                  subscriptionCanceledAt
+                    ? "Your subscription has already been scheduled for cancellation."
+                    : permissionsError
+                }
+              />
             </Command.List>
           </Command>
         }

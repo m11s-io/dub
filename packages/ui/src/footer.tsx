@@ -1,6 +1,6 @@
 "use client";
 
-import { cn, createHref } from "@dub/utils";
+import { ALL_TOOLS, cn, createHref } from "@dub/utils";
 import { ChevronDown } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -13,7 +13,6 @@ import {
   DubProductIcon,
   Github,
   LinkedIn,
-  ReferredVia,
   Twitter,
   YouTube,
 } from "./icons";
@@ -46,31 +45,24 @@ const socials = [
 ];
 
 const navigation = {
-  product: [
-    ...FEATURES_LIST.filter(({ title }) => title !== "Dub Integrations").map(
-      ({ id, title, href }) => ({
-        id,
-        name: title,
-        href,
-      }),
-    ),
-    { id: null, name: "Dub Enterprise", href: "/enterprise" },
-  ],
+  product: FEATURES_LIST.filter(
+    ({ title }) => title !== "Dub Integrations",
+  ).map(({ id, title, href }) => ({
+    id,
+    name: title,
+    href,
+  })),
   solutions: [
     { name: "Marketing attribution", href: "/analytics" },
     { name: "Content creators", href: "/solutions/creators" },
-    { name: "Affiliate management", href: "/partners" },
   ],
   resources: [
     { name: "Docs", href: "/docs" },
     { name: "Help Center", href: "/help" },
+    { name: "Enterprise", href: "/enterprise" },
+    { name: "Startups", href: "/startups" },
     { name: "Integrations", href: "/integrations" },
     { name: "Pricing", href: "/pricing" },
-    {
-      name: "Affiliates",
-      href: "https://partners.dub.co/dub",
-      target: "_blank",
-    },
   ],
   company: [
     { name: "About", href: "/about" },
@@ -86,13 +78,7 @@ const navigation = {
     name,
     href: `/compare/${slug}`,
     product: "links",
-  })).concat(
-    ["Rewardful", "PartnerStack", "FirstPromoter", "Tolt"].map((name) => ({
-      name,
-      href: `/blog/dub-vs-${name.toLowerCase()}`,
-      product: "partners",
-    })),
-  ),
+  })),
 };
 
 const linkListHeaderClassName = "text-sm font-medium text-neutral-900";
@@ -112,7 +98,8 @@ export function Footer({
     domain = staticDomain;
   }
 
-  const [openPopover, setOpenPopover] = useState(false);
+  const [openToolsPopover, setOpenToolsPopover] = useState(false);
+  const [openLegalPopover, setOpenLegalPopover] = useState(false);
 
   return (
     <MaxWidthWrapper
@@ -212,14 +199,45 @@ export function Footer({
                           utm_campaign: domain,
                           utm_content: item.name,
                         })}
-                        target={item.target}
                         className={cn(linkListItemClassName, "gap-1")}
                       >
                         {item.name}
-                        {item.target && <ReferredVia className="size-3.5" />}
                       </Link>
                     </li>
                   ))}
+                  <li className="-mt-1">
+                    <Popover
+                      content={
+                        <div className="flex w-screen flex-col gap-1 p-1.5 text-sm focus-visible:outline-none sm:w-auto sm:min-w-[200px]">
+                          {ALL_TOOLS.map((tool) => (
+                            <Link
+                              key={tool.name}
+                              href={createHref(`/tools/${tool.slug}`, domain, {
+                                utm_source: "Custom Domain",
+                                utm_medium: "Footer",
+                                utm_campaign: domain,
+                                utm_content: tool.name,
+                              })}
+                              className={cn(
+                                menuItemVariants({ variant: "default" }),
+                                linkListItemClassName,
+                                "justify-start font-normal",
+                              )}
+                            >
+                              {tool.name}
+                            </Link>
+                          ))}
+                        </div>
+                      }
+                      openPopover={openToolsPopover}
+                      setOpenPopover={setOpenToolsPopover}
+                    >
+                      <button className={linkListItemClassName}>
+                        Tools
+                        <ChevronDown className="size-3.5" />
+                      </button>
+                    </Popover>
+                  </li>
                 </ul>
               </div>
             </div>
@@ -271,8 +289,8 @@ export function Footer({
                             ))}
                           </div>
                         }
-                        openPopover={openPopover}
-                        setOpenPopover={setOpenPopover}
+                        openPopover={openLegalPopover}
+                        setOpenPopover={setOpenLegalPopover}
                       >
                         <button className={linkListItemClassName}>
                           Legal

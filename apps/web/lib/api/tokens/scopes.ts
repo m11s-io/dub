@@ -16,8 +16,8 @@ export const SCOPES = [
   "workspaces.write",
   "webhooks.read",
   "webhooks.write",
-  "groups.read",
-  "groups.write",
+  "customers.read",
+  "customers.write",
   "apis.all", // All API scopes
   "apis.read", // All read scopes
 ] as const;
@@ -25,7 +25,7 @@ export const SCOPES = [
 export type Scope = (typeof SCOPES)[number];
 
 // Scopes available for Workspace API keys
-export const RESOURCE_SCOPES: {
+const RESOURCE_SCOPES: {
   scope: Scope;
   roles: WorkspaceRole[];
   permissions: PermissionAction[];
@@ -89,18 +89,18 @@ export const RESOURCE_SCOPES: {
     resource: "domains",
   },
   {
-    scope: "groups.read",
+    scope: "customers.read",
     roles: ["owner", "member", "viewer", "billing"],
-    permissions: ["groups.read"],
+    permissions: ["customers.read"],
     type: "read",
-    resource: "groups",
+    resource: "customers",
   },
   {
-    scope: "groups.write",
+    scope: "customers.write",
     roles: ["owner", "member"],
-    permissions: ["groups.write", "groups.read"],
+    permissions: ["customers.write", "customers.read"],
     type: "write",
-    resource: "groups",
+    resource: "customers",
   },
   {
     scope: "workspaces.read",
@@ -147,7 +147,7 @@ export const RESOURCE_SCOPES: {
       "domains.read",
       "workspaces.read",
       "analytics.read",
-      "groups.read",
+      "customers.read",
     ],
   },
   {
@@ -165,38 +165,40 @@ export const RESOURCE_SCOPES: {
       "workspaces.read",
       "workspaces.write",
       "analytics.read",
-      "groups.read",
-      "groups.write",
+      "customers.read",
+      "customers.write",
     ],
   },
 ];
 
-export const SCOPES_BY_RESOURCE = RESOURCE_SCOPES.reduce((acc, scope) => {
-  if (!scope.resource || !scope.type) {
-    return acc;
-  }
+export type LegacyScopeGrant = {
+  enforcedAt: Date;
+  permissions: readonly PermissionAction[];
+};
 
-  if (!acc[scope.resource]) {
-    acc[scope.resource] = [];
-  }
+// Keys and OAuth installations created before this date were made before the
+// customer scopes existed.
+export const CUSTOMER_SCOPES_ENFORCED_AT = new Date("2026-10-13T18:35:00.000Z");
 
-  acc[scope.resource].push({
-    scope: scope.scope,
-    type: scope.type,
-    roles: scope.roles,
-  });
-
-  return acc;
-}, {});
+// Scopes introduced after API keys already existed. A key or OAuth installation
+// created before `enforcedAt` keeps these permissions without selecting the scope.
+// Keep permissions that share a cutoff in one entry. Add a new entry when a
+// scope needs a different cutoff.
+export const LEGACY_SCOPE_GRANTS: LegacyScopeGrant[] = [
+  {
+    enforcedAt: CUSTOMER_SCOPES_ENFORCED_AT,
+    permissions: ["customers.read", "customers.write"],
+  },
+];
 
 // Scope to permissions mapping
-export const SCOPE_PERMISSIONS_MAP = RESOURCE_SCOPES.reduce((acc, scope) => {
+const SCOPE_PERMISSIONS_MAP = RESOURCE_SCOPES.reduce((acc, scope) => {
   acc[scope.scope] = scope.permissions;
   return acc;
 }, {});
 
 // WorkspaceRole to scopes mapping
-export const ROLE_SCOPES_MAP = RESOURCE_SCOPES.reduce((acc, scope) => {
+const ROLE_SCOPES_MAP = RESOURCE_SCOPES.reduce((acc, scope) => {
   scope.roles.forEach((role) => {
     if (!acc[role]) {
       acc[role] = [];
@@ -219,6 +221,34 @@ export const mapScopesToPermissions = (scopes: Scope[]) => {
   });
 
   return permissions;
+};
+
+// Grants permissions from `grants` when the key or installation predates the
+// grant's cutoff. A missing date is treated as legacy so cached tokens from
+// before this field existed keep working. Routes can pass extra grants that
+// apply only to that route.
+export const grantLegacyScopePermissions = ({
+  permissions,
+  createdAt,
+  grants = LEGACY_SCOPE_GRANTS,
+}: {
+  permissions: PermissionAction[];
+  createdAt?: Date | string | null;
+  grants?: readonly LegacyScopeGrant[];
+}): PermissionAction[] => {
+  const createdAtMs = createdAt == null ? null : new Date(createdAt).getTime();
+
+  const legacyPermissions = grants.flatMap((grant) =>
+    createdAtMs != null && createdAtMs >= grant.enforcedAt.getTime()
+      ? []
+      : grant.permissions,
+  );
+
+  if (legacyPermissions.length === 0) {
+    return permissions;
+  }
+
+  return [...new Set<PermissionAction>([...permissions, ...legacyPermissions])];
 };
 
 // Get SCOPES_BY_RESOURCE based on user role in a workspace
@@ -293,12 +323,12 @@ export const validateScopesForRole = (scopes: Scope[], role: WorkspaceRole) => {
 };
 
 // Get the scopes for a role
-export const getScopesForRole = (role: WorkspaceRole) => {
+const getScopesForRole = (role: WorkspaceRole) => {
   return ROLE_SCOPES_MAP[role];
 };
 
 // Consolidate scopes to avoid duplication and show only the most permissive scope
-export const consolidateScopes = (scopes: string[]) => {
+const consolidateScopes = (scopes: string[]) => {
   const consolidated = new Set();
 
   scopes.forEach((scope) => {
@@ -312,4 +342,71 @@ export const consolidateScopes = (scopes: string[]) => {
   });
 
   return Array.from(consolidated) as string[];
+};
+
+const isScopeGrantedForRole = ({
+  scope,
+  role,
+}: {
+  scope: string;
+  role: WorkspaceRole;
+}) => {
+  const scopesForRole: string[] = getScopesForRole(role) ?? [];
+
+  return scope === "user.read" || scopesForRole.includes(scope);
+};
+
+// Scopes that can be granted for the given role (intersection with requested)
+export const getGrantedScopesForRole = ({
+  scopes,
+  role,
+}: {
+  scopes: string[];
+  role: WorkspaceRole;
+}) => {
+  return scopes.filter((scope) =>
+    isScopeGrantedForRole({
+      scope,
+      role,
+    }),
+  );
+};
+
+// Requested scopes the role cannot grant (raw intersection, same basis as grant)
+export const getMissingScopesForRole = ({
+  scopes,
+  role,
+}: {
+  scopes: string[];
+  role: WorkspaceRole;
+}) => {
+  return scopes.filter((scope) => !isScopeGrantedForRole({ scope, role }));
+};
+
+// Consent rows: consolidate granted and missing separately so a granted
+// `{resource}.read` is still shown when `{resource}.write` is denied.
+export const getDisplayedScopesForRole = ({
+  scopes,
+  role,
+}: {
+  scopes: string[];
+  role: WorkspaceRole;
+}) => {
+  const grantedScopes = consolidateScopes(
+    getGrantedScopesForRole({ scopes, role }),
+  );
+
+  const missingScopes = consolidateScopes(
+    getMissingScopesForRole({ scopes, role }),
+  );
+
+  const order = new Map(scopes.map((scope, index) => [scope, index]));
+
+  return [
+    ...grantedScopes.map((scope) => ({ scope, missing: false })),
+    ...missingScopes.map((scope) => ({ scope, missing: true })),
+  ].sort(
+    (a, b) =>
+      (order.get(a.scope) ?? Infinity) - (order.get(b.scope) ?? Infinity),
+  );
 };

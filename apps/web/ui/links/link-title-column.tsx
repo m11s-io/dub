@@ -4,7 +4,6 @@ import useCurrentFolderId from "@/lib/swr/use-current-folder-id";
 import useDomain from "@/lib/swr/use-domain";
 import useFolder from "@/lib/swr/use-folder";
 import useWorkspace from "@/lib/swr/use-workspace";
-import { UserProps } from "@/lib/types";
 import { UserAvatar } from "@/ui/users/user-avatar";
 import {
   ArrowTurnRight2,
@@ -15,7 +14,6 @@ import {
   TimestampTooltip,
   Tooltip,
   TooltipContent,
-  useCurrentSubdomain,
   useInViewport,
 } from "@dub/ui";
 import {
@@ -86,17 +84,13 @@ export function LinkTitleColumn({ link }: { link: ResponseLink }) {
 
   const hasQuickViewSettings = quickViewSettings.some(({ key }) => link?.[key]);
 
-  const { subdomain } = useCurrentSubdomain();
   const { folderId: currentFolderId } = useCurrentFolderId();
 
   const showFolderIcon = useMemo(() => {
     return Boolean(
-      !loading &&
-        link.folderId &&
-        currentFolderId !== link.folderId &&
-        subdomain !== "admin",
+      !loading && link.folderId && currentFolderId !== link.folderId,
     );
-  }, [loading, link.folderId, currentFolderId, subdomain]);
+  }, [loading, link.folderId, currentFolderId]);
 
   const { folder } = useFolder({
     folderId: link.folderId,
@@ -414,7 +408,16 @@ const Details = memo(
   },
 );
 
-export function UserAvatarWithTooltip({ user }: { user: UserProps }) {
+export function UserAvatarWithTooltip({
+  user,
+}: {
+  user: {
+    id?: string;
+    name?: string | null;
+    email?: string | null;
+    image?: string | null;
+  };
+}) {
   const { slug } = useParams();
   return (
     <Tooltip

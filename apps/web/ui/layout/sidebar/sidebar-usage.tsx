@@ -1,16 +1,17 @@
 "use client";
 
 import { clientAccessCheck } from "@/lib/client-access-check";
+import { testIds } from "@/lib/e2e/test-ids";
 import useWorkspace from "@/lib/swr/use-workspace";
+import { useRetryPaymentModal } from "@/ui/modals/retry-payment-modal";
 import { useStartPaidPlanModal } from "@/ui/modals/start-paid-plan-modal";
-import ManageSubscriptionButton from "@/ui/workspaces/manage-subscription-button";
 import {
   AnimatedSizeContainer,
   Button,
   DynamicTooltipWrapper,
   Icon,
 } from "@dub/ui";
-import { CursorRays, Hyperlink, MoneyBills2, Users } from "@dub/ui/icons";
+import { CursorRays, Hyperlink } from "@dub/ui/icons";
 import {
   cn,
   getFirstAndLastDay,
@@ -39,10 +40,6 @@ function UsageInner() {
     usageLimit,
     linksUsage,
     linksLimit,
-    payoutsUsage,
-    payoutsLimit,
-    partnersUsage,
-    partnersLimit,
     billingCycleStart,
     plan,
     planTier,
@@ -51,7 +48,6 @@ function UsageInner() {
     loading,
     trialEndsAt,
     role,
-    defaultProgramId,
   } = useWorkspace({ swrOpts: { keepPreviousData: true } });
 
   const isTrial = isWorkspaceBillingTrialActive(trialEndsAt);
@@ -63,6 +59,8 @@ function UsageInner() {
 
   const { StartPaidPlanModal, setShowStartPaidPlanModal } =
     useStartPaidPlanModal();
+  const { RetryPaymentModal, setShowRetryPaymentModal } =
+    useRetryPaymentModal();
 
   const trialDaysLeft = useMemo(() => {
     if (!trialEndsAt || !isWorkspaceBillingTrialActive(trialEndsAt)) {
@@ -101,15 +99,14 @@ function UsageInner() {
     () =>
       [
         [usage, usageLimit],
-        [payoutsUsage, payoutsLimit],
-        [partnersUsage, partnersLimit],
+        [linksUsage, linksLimit],
       ].map(
         ([usage, limit]) =>
           usage !== undefined &&
           limit !== undefined &&
           usage / Math.max(0, usage, limit) >= 0.9,
       ),
-    [usage, usageLimit, payoutsUsage, payoutsLimit, partnersUsage],
+    [usage, usageLimit, linksUsage, linksLimit],
   );
 
   const warning = warnings.some((w) => w);
@@ -117,11 +114,15 @@ function UsageInner() {
   return loading || usage !== undefined ? (
     <>
       {isTrial ? <StartPaidPlanModal /> : null}
+      {paymentFailedAt ? <RetryPaymentModal /> : null}
       <AnimatedSizeContainer height>
         <div className="border-t border-neutral-300/80 p-3">
           {isTrial ? (
             <div className="flex items-center justify-between gap-2">
-              <span className="text-sm font-semibold text-neutral-900">
+              <span
+                className="text-sm font-semibold text-neutral-900"
+                data-testid={testIds.billing.freeTrial}
+              >
                 Free trial
               </span>
 
@@ -141,7 +142,7 @@ function UsageInner() {
               href={`/${slug}/settings/billing`}
             >
               Usage
-              <ChevronRight className="size-2 text-neutral-400 transition-[color,transform] group-hover:translate-x-0.5 group-hover:text-neutral-500" />
+              <ChevronRight className="size-3 text-neutral-400 transition-[color,transform] group-hover:translate-x-0.5 group-hover:text-neutral-500" />
             </Link>
           )}
 
@@ -159,49 +160,17 @@ function UsageInner() {
               }
               warning={warnings[0]}
             />
-            {defaultProgramId ? (
-              <>
-                <UsageRow
-                  icon={MoneyBills2}
-                  label="Payouts"
-                  usage={payoutsUsage}
-                  limit={payoutsLimit}
-                  showNextPlan={hovered}
-                  nextPlanLimit={
-                    isTrial ? currentPlanLimits.payouts : nextPlanLimits.payouts
-                  }
-                  warning={warnings[1]}
-                  valueInCents
-                />
-                <UsageRow
-                  icon={Users}
-                  label="Partners"
-                  usage={defaultProgramId ? partnersUsage : 0}
-                  limit={partnersLimit}
-                  showNextPlan={hovered}
-                  nextPlanLimit={
-                    isTrial
-                      ? currentPlanLimits.partners
-                      : nextPlanLimits.partners
-                  }
-                  warning={warnings[2]}
-                />
-              </>
-            ) : (
-              <>
-                <UsageRow
-                  icon={Hyperlink}
-                  label="Links"
-                  usage={linksUsage}
-                  limit={linksLimit}
-                  showNextPlan={hovered}
-                  nextPlanLimit={
-                    isTrial ? currentPlanLimits.links : nextPlanLimits.links
-                  }
-                  warning={warnings[1]}
-                />
-              </>
-            )}
+            <UsageRow
+              icon={Hyperlink}
+              label="Links"
+              usage={linksUsage}
+              limit={linksLimit}
+              showNextPlan={hovered}
+              nextPlanLimit={
+                isTrial ? currentPlanLimits.links : nextPlanLimits.links
+              }
+              warning={warnings[1]}
+            />
           </div>
 
           <div className="mt-3">
@@ -214,7 +183,7 @@ function UsageInner() {
                   paymentFailedAt && "text-red-600",
                 )}
               >
-                {paymentFailedAt
+                {paymentFailedAt && plan !== "free"
                   ? "Your last payment failed. Please update your payment method to continue using Dub."
                   : isTrial && trialEndsAt
                     ? null
@@ -225,18 +194,26 @@ function UsageInner() {
             )}
           </div>
 
-          {paymentFailedAt ? (
-            <ManageSubscriptionButton
-              text="Update Payment Method"
-              variant="primary"
-              className="mt-4 w-full"
-              onMouseEnter={() => {
-                setHovered(true);
-              }}
-              onMouseLeave={() => {
-                setHovered(false);
-              }}
-            />
+          {paymentFailedAt && plan !== "free" ? (
+            <DynamicTooltipWrapper
+              tooltipProps={
+                permissionsError ? { content: permissionsError } : undefined
+              }
+            >
+              <Button
+                text="Retry payment"
+                variant="primary"
+                className="mt-4 h-8 w-full rounded-lg"
+                disabled={Boolean(permissionsError)}
+                onClick={() => setShowRetryPaymentModal(true)}
+                onMouseEnter={() => {
+                  setHovered(true);
+                }}
+                onMouseLeave={() => {
+                  setHovered(false);
+                }}
+              />
+            </DynamicTooltipWrapper>
           ) : isTrial ? (
             <DynamicTooltipWrapper
               tooltipProps={
@@ -287,7 +264,6 @@ type UsageRowProps = {
   nextPlanLimit?: number;
   warning: boolean;
   hideProgressBar?: boolean;
-  valueInCents?: boolean;
 };
 
 const UsageRow = forwardRef<HTMLDivElement, UsageRowProps>(
@@ -301,7 +277,6 @@ const UsageRow = forwardRef<HTMLDivElement, UsageRowProps>(
       nextPlanLimit,
       warning,
       hideProgressBar = false,
-      valueInCents = false,
     }: UsageRowProps,
     ref,
   ) => {
@@ -320,20 +295,7 @@ const UsageRow = forwardRef<HTMLDivElement, UsageRowProps>(
           {!loading ? (
             <div className="flex items-center">
               <span className="text-xs font-medium text-neutral-600">
-                <NumberFlow
-                  value={usage}
-                  format={
-                    valueInCents
-                      ? {
-                          style: "currency",
-                          currency: "USD",
-                          // @ts-ignore – trailingZeroDisplay is a valid option but TS is outdated
-                          trailingZeroDisplay: "stripIfInteger",
-                        }
-                      : undefined
-                  }
-                />{" "}
-                of{" "}
+                <NumberFlow value={usage} /> of{" "}
                 <motion.span
                   className={cn(
                     "relative transition-colors duration-150",
@@ -342,9 +304,7 @@ const UsageRow = forwardRef<HTMLDivElement, UsageRowProps>(
                       : "text-neutral-600",
                   )}
                 >
-                  {valueInCents
-                    ? formatUsdFromCents(limit)
-                    : formatNumber(limit)}
+                  {formatNumber(limit)}
                   {showNextPlan && nextPlanLimit && (
                     <motion.span
                       className="absolute bottom-[45%] left-0 h-[1px] bg-neutral-400"
@@ -371,9 +331,7 @@ const UsageRow = forwardRef<HTMLDivElement, UsageRowProps>(
                     }}
                   >
                     <motion.span className="ml-1 whitespace-nowrap text-xs font-medium text-blue-600">
-                      {valueInCents
-                        ? formatUsdFromCents(nextPlanLimit)
-                        : formatNumber(nextPlanLimit)}
+                      {formatNumber(nextPlanLimit)}
                     </motion.span>
                   </motion.div>
                 )}
@@ -423,14 +381,3 @@ const formatNumber = (value: number) =>
         full: value !== undefined && value < 999,
         digits: 1,
       });
-
-function formatUsdFromCents(cents: number) {
-  if (cents >= INFINITY_NUMBER) {
-    return "∞";
-  }
-  const dollars = cents / 100;
-  return `$${nFormatter(dollars, {
-    full: dollars < 1000,
-    digits: 1,
-  })}`;
-}

@@ -8,27 +8,33 @@ import * as z from "zod/v4";
 
 const querySchema = z.object({
   type: z
-    .enum(["subscription", "partnerPayout", "domainRenewal"])
+    .enum(["subscription", "domainRenewal"])
     .optional()
     .default("subscription"),
+  stripeStatus: z.enum(["open"]).optional(), // only for Stripe subscription invoices
 });
 
 // TODO: move to GET /invoices
 export const GET = withWorkspace(
   async ({ workspace, searchParams }) => {
-    if (!workspace.stripeId) {
-      return NextResponse.json([]);
+    const { type, stripeStatus } = querySchema.parse(searchParams);
+
+    if (type === "subscription") {
+      if (!workspace.stripeId) {
+        return NextResponse.json([]);
+      }
+
+      const invoices = await getSubscriptionInvoices(workspace.stripeId, {
+        status: stripeStatus,
+      });
+
+      return NextResponse.json(z.array(InvoiceSchema).parse(invoices));
     }
 
-    const { type } = querySchema.parse(searchParams);
-
-    const invoices =
-      type === "subscription"
-        ? await subscriptionInvoices(workspace.stripeId)
-        : await otherInvoices({
-            workspaceId: workspace.id,
-            type,
-          });
+    const invoices = await getOtherInvoices({
+      workspaceId: workspace.id,
+      type,
+    });
 
     return NextResponse.json(z.array(InvoiceSchema).parse(invoices));
   },
@@ -37,34 +43,37 @@ export const GET = withWorkspace(
   },
 );
 
-const subscriptionInvoices = async (stripeId: string) => {
+const getSubscriptionInvoices = async (
+  stripeId: string,
+  { status }: { status?: "open" } = {},
+) => {
   try {
     const invoices = await stripe.invoices.list({
       customer: stripeId,
       limit: 100,
+      ...(status && { status }),
     });
 
-    return invoices.data.map((invoice) => {
-      return {
-        id: invoice.id,
-        total: invoice.amount_paid,
-        createdAt: new Date(invoice.created * 1000),
-        description: "Dub subscription",
-        pdfUrl: invoice.invoice_pdf,
-      };
-    });
+    return invoices.data.map((invoice) => ({
+      id: invoice.id,
+      total: invoice.total ?? invoice.amount_due,
+      stripeStatus: invoice.status,
+      createdAt: new Date(invoice.created * 1000),
+      description: "Dub subscription",
+      pdfUrl: invoice.invoice_pdf,
+    }));
   } catch (error) {
     console.log(error);
     return [];
   }
 };
 
-const otherInvoices = async ({
+const getOtherInvoices = async ({
   workspaceId,
   type,
 }: {
   workspaceId: string;
-  type: "partnerPayout" | "domainRenewal";
+  type: "domainRenewal";
 }) => {
   const invoices = await prisma.invoice.findMany({
     where: {
@@ -78,6 +87,8 @@ const otherInvoices = async ({
       status: true,
       paymentMethod: true,
       failedReason: true,
+      refundedAmount: true,
+      refundReason: true,
     },
     orderBy: {
       createdAt: "desc",
@@ -87,8 +98,7 @@ const otherInvoices = async ({
   return invoices.map((invoice) => {
     return {
       ...invoice,
-      description:
-        type === "partnerPayout" ? "Dub Partner payout" : "Dub Domain renewal",
+      description: "Dub domain renewal",
       pdfUrl: `${APP_DOMAIN}/invoices/${invoice.id}`,
     };
   });

@@ -1,5 +1,6 @@
-import { Webhook, WebhookReceiver } from "@prisma/client";
-import { LINK_LEVEL_WEBHOOK_TRIGGERS } from "./constants";
+import { WebhookReceiver } from "@prisma/client";
+import { WEBHOOK_TRIGGERS } from "./constants";
+import type { WebhookTrigger } from "./types";
 
 const webhookReceivers: Record<string, WebhookReceiver> = {
   "zapier.com": "zapier",
@@ -9,21 +10,25 @@ const webhookReceivers: Record<string, WebhookReceiver> = {
   "api.segment.io": "segment",
 };
 
-export const isLinkLevelWebhook = (webhook: Pick<Webhook, "triggers">) => {
-  if (!webhook.triggers) {
-    return false;
-  }
-
-  const triggers =
-    webhook.triggers as (typeof LINK_LEVEL_WEBHOOK_TRIGGERS)[number][];
-
-  return triggers.some((trigger) =>
-    LINK_LEVEL_WEBHOOK_TRIGGERS.includes(trigger),
-  );
-};
-
 export const identifyWebhookReceiver = (url: string): WebhookReceiver => {
   const { hostname } = new URL(url);
 
   return webhookReceivers[hostname] || "user";
 };
+
+/**
+ * Returns the webhook events a workspace can subscribe to in the webhook
+ * picker, in display order.
+ *
+ * When `supportedTriggers` is passed (integrations like Zapier or Slack),
+ * keeps only the events that integration supports.
+ */
+export function getAvailableWebhookTriggers({
+  supportedTriggers,
+}: {
+  supportedTriggers?: readonly WebhookTrigger[];
+} = {}): WebhookTrigger[] {
+  return supportedTriggers
+    ? WEBHOOK_TRIGGERS.filter((trigger) => supportedTriggers.includes(trigger))
+    : [...WEBHOOK_TRIGGERS];
+}

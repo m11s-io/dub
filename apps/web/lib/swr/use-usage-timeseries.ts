@@ -1,4 +1,4 @@
-import { fetcher, getFirstAndLastDay } from "@dub/utils";
+import { fetcher, getBillingPeriodBounds } from "@dub/utils";
 import { endOfDay, startOfDay } from "date-fns";
 import { useSearchParams } from "next/navigation";
 import { useMemo } from "react";
@@ -6,14 +6,30 @@ import useSWR from "swr";
 import { MEGA_WORKSPACE_LINKS_LIMIT } from "../constants/misc";
 import useWorkspace from "./use-workspace";
 
+export type UsageResource = "links" | "events";
+
+const availableResources: UsageResource[] = ["links", "events"];
+
 export function useUsageTimeseries({
   resource: definedResource,
-}: { resource?: "links" | "events" } = {}) {
-  const { id: workspaceId, billingCycleStart, totalLinks } = useWorkspace();
-  const { firstDay, lastDay } = getFirstAndLastDay(billingCycleStart ?? 0);
+}: { resource?: UsageResource } = {}) {
+  const {
+    id: workspaceId,
+    billingCycleStart,
+    billingCycleEndsAt,
+    planPeriod,
+    totalLinks,
+  } = useWorkspace();
+
+  const { start: firstDay, end: lastDay } = getBillingPeriodBounds({
+    planPeriod,
+    billingCycleStart: billingCycleStart ?? 0,
+    billingCycleEndsAt,
+  });
+
   const searchParams = useSearchParams();
 
-  const defaultActiveTab = useMemo(() => {
+  const defaultActiveTab = useMemo((): UsageResource => {
     if (totalLinks && totalLinks > MEGA_WORKSPACE_LINKS_LIMIT) {
       return "links";
     }
@@ -22,11 +38,13 @@ export function useUsageTimeseries({
 
   const activeResource = useMemo(() => {
     const tab = searchParams.get("tab");
-    if (tab && ["links", "events"].includes(tab)) {
-      return tab as "links" | "events";
+    if (tab && availableResources.includes(tab as UsageResource)) {
+      return tab as UsageResource;
     }
     return defaultActiveTab;
   }, [searchParams, defaultActiveTab]);
+
+  const resource = definedResource || activeResource;
 
   // Get filter parameters from URL
   const folderId = searchParams.get("folderId");
@@ -52,6 +70,8 @@ export function useUsageTimeseries({
       (gb) => gb === searchParams.get("groupBy"),
     ) ?? "domain";
 
+  const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
   const {
     data: usage,
     error,
@@ -65,14 +85,14 @@ export function useUsageTimeseries({
   >(
     workspaceId &&
       `/api/workspaces/${workspaceId}/billing/usage?${new URLSearchParams({
-        resource: definedResource || activeResource,
+        resource,
         ...(start &&
           end && {
             start: startOfDay(new Date(start)).toISOString(),
             end: endOfDay(new Date(end)).toISOString(),
           }),
         ...(interval && { interval }),
-        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+        ...(timezone && { timezone }),
         ...(folderId && { folderId }),
         ...(domain && { domain }),
         ...(groupBy && {

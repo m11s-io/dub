@@ -1,6 +1,10 @@
+import { formatDateTooltip } from "@/lib/analytics/format-date-tooltip";
 import useDomains from "@/lib/swr/use-domains";
 import useFolders from "@/lib/swr/use-folders";
-import { useUsageTimeseries } from "@/lib/swr/use-usage-timeseries";
+import {
+  UsageResource,
+  useUsageTimeseries,
+} from "@/lib/swr/use-usage-timeseries";
 import { BarList } from "@/ui/analytics/bar-list";
 import { FolderIcon } from "@/ui/folders/folder-icon";
 import SimpleDateRangePicker from "@/ui/shared/simple-date-range-picker";
@@ -16,7 +20,7 @@ import {
 } from "@dub/ui";
 import { Bars, TimeSeriesChart, XAxis, YAxis } from "@dub/ui/charts";
 import { CursorRays, Folder, Globe2, Hyperlink } from "@dub/ui/icons";
-import { cn, formatDate, GOOGLE_FAVICON_URL, nFormatter } from "@dub/utils";
+import { cn, GOOGLE_FAVICON_URL, nFormatter } from "@dub/utils";
 import NumberFlow, { NumberFlowGroup } from "@number-flow/react";
 import {
   ComponentProps,
@@ -41,9 +45,8 @@ const BAR_COLORS = [
   "text-pink-500",
 ];
 
-const RESOURCES = ["links", "events"] as const;
 const resourceEmptyStates: Record<
-  (typeof RESOURCES)[number],
+  UsageResource,
   ComponentProps<typeof EmptyState>
 > = {
   links: {
@@ -71,6 +74,16 @@ export function UsageChart() {
     interval,
     groupBy,
   } = useUsageTimeseries();
+
+  const formatValue = useCallback(
+    (value: number) => nFormatter(value, { full: true }),
+    [],
+  );
+
+  const formatDate = useCallback(
+    (date: Date) => formatDateTooltip(date, { interval, start, end }),
+    [interval, start, end],
+  );
 
   // Get filter values from URL params
   const folderId = searchParamsObj.folderId;
@@ -250,11 +263,6 @@ export function UsageChart() {
   const deferredHoveredGroupsMeta = useDeferredValue(hoveredGroupsMeta);
   const deferredHoveredTotalUsage = useDeferredValue(hoveredTotalUsage);
 
-  const allZeroes = useMemo(
-    () => chartData?.every(({ values }) => values.usage === 0),
-    [chartData],
-  );
-
   const sortedGroupEntries = useMemo(
     () =>
       groupsMeta
@@ -366,8 +374,13 @@ export function UsageChart() {
       <div
         className={cn("h-64 transition-opacity", isValidating && "opacity-50")}
       >
-        {chartData && chartData.length > 0 ? (
-          !allZeroes ? (
+        {chartData ? (
+          chartData.length === 0 ||
+          chartData.every(({ values }) => values.usage === 0) ? (
+            <div className="flex size-full items-center justify-center">
+              <EmptyState {...resourceEmptyStates[activeResource]} />
+            </div>
+          ) : (
             <TimeSeriesChart
               key={activeResource}
               type="bar"
@@ -398,10 +411,10 @@ export function UsageChart() {
                   <>
                     <div className="flex items-center justify-between gap-4 px-4 py-3 text-xs">
                       <span className="text-content-emphasis font-semibold">
-                        {formatDate(d.date, { month: "short" })}
+                        {formatDate(d.date)}
                       </span>
                       <span className="text-content-default font-medium">
-                        {nFormatter(d.values.usage, { full: true })}
+                        {formatValue(d.values.usage)}
                       </span>
                     </div>
                     {Boolean(topGroups?.length) && (
@@ -440,14 +453,10 @@ export function UsageChart() {
                 );
               }}
             >
-              <XAxis highlightLast={false} />
-              <YAxis showGridLines tickFormat={nFormatter} />
+              <XAxis highlightLast={false} tickFormat={formatDate} />
+              <YAxis showGridLines tickFormat={(value) => nFormatter(value)} />
               <Bars />
             </TimeSeriesChart>
-          ) : (
-            <div className="flex size-full items-center justify-center">
-              <EmptyState {...resourceEmptyStates[activeResource]} />
-            </div>
           )
         ) : (
           <div className="flex size-full items-center justify-center text-sm text-neutral-500">
@@ -518,31 +527,23 @@ export function UsageChart() {
                   );
                 })}
               </>
-            ) : (
-              <>
-                {loading ? (
-                  [...Array(3)].map((_, idx) => (
-                    <div
-                      key={idx}
-                      className="flex animate-pulse items-center justify-between gap-4 px-3 py-2 text-xs font-medium"
-                    >
-                      <div className="flex items-center gap-2">
-                        <div className="size-2 rounded-full bg-neutral-200" />
-                        <div className="h-4 w-32 min-w-0 rounded-md bg-neutral-200" />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <div className="h-4 w-8 rounded-md bg-neutral-200" />
-                        <div className="h-4 w-6 rounded-md bg-neutral-200" />
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-content-subtle flex size-full items-center justify-center py-5 text-sm">
-                    Failed to load usage data
-                  </p>
-                )}
-              </>
-            )}
+            ) : loading ? (
+              [...Array(3)].map((_, idx) => (
+                <div
+                  key={idx}
+                  className="flex animate-pulse items-center justify-between gap-4 px-3 py-2 text-xs font-medium"
+                >
+                  <div className="flex items-center gap-2">
+                    <div className="size-2 rounded-full bg-neutral-200" />
+                    <div className="h-4 w-32 min-w-0 rounded-md bg-neutral-200" />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="h-4 w-8 rounded-md bg-neutral-200" />
+                    <div className="h-4 w-6 rounded-md bg-neutral-200" />
+                  </div>
+                </div>
+              ))
+            ) : null}
           </NumberFlowGroup>
         </div>
 

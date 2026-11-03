@@ -1,106 +1,50 @@
 "use client";
 
-import { usePartnerMessagesCount } from "@/lib/messages/hooks/use-partner-messages-count";
 import { getPlanCapabilities } from "@/lib/plan-capabilities";
-import { SUBMITTED_LEADS_ENABLED_PROGRAM_IDS } from "@/lib/submitted-leads/constants";
-import {
-  SubmissionsCountByStatus,
-  useBountySubmissionsCount,
-} from "@/lib/swr/use-bounty-submissions-count";
-import { useFraudGroupCount } from "@/lib/swr/use-fraud-groups-count";
-import { usePayoutsCount } from "@/lib/swr/use-payouts-count";
-import useProgram from "@/lib/swr/use-program";
-import { useProgramSubmittedLeadsCount } from "@/lib/swr/use-program-submitted-leads-count";
 import useWorkspace from "@/lib/swr/use-workspace";
-import { useRouterStuff } from "@dub/ui";
+import { useKeyboardShortcut, useRouterStuff } from "@dub/ui";
 import {
   Bell,
-  Brush,
+  BookOpen,
   ConnectedDots,
   CubeSettings,
   DiamondTurnRight,
-  Flag,
   Folder,
-  Gauge6,
   Gear2,
-  Gift,
   Globe,
-  InvoiceDollar,
   Key,
-  LifeRing,
-  LinesY as LinesYStatic,
   MarketingTarget,
-  MoneyBills2,
-  Msgs,
-  PaperPlane,
   Receipt2,
   ShieldCheck,
-  Sliders,
   StackY3,
   Tag,
-  Trophy,
-  UserCheck,
-  UserPlus,
-  Users,
   Users6,
   Webhook,
 } from "@dub/ui/icons";
 import { isWorkspaceBillingTrialActive } from "@dub/utils";
 import { Session } from "next-auth";
 import { useSession } from "next-auth/react";
+import Link from "next/link";
 import { useParams, usePathname } from "next/navigation";
 import { ReactNode, useMemo } from "react";
-import { DubPartnersPopup } from "./dub-partners-popup";
 import { Compass } from "./icons/compass";
-import { ConnectedDots4 } from "./icons/connected-dots4";
 import { CursorRays } from "./icons/cursor-rays";
 import { Hyperlink } from "./icons/hyperlink";
 import { LinesY } from "./icons/lines-y";
 import { User } from "./icons/user";
 import { SidebarNav, SidebarNavAreas, SidebarNavGroups } from "./sidebar-nav";
 import { SidebarUsage } from "./sidebar-usage";
-import { useProgramApplicationsCount } from "./use-program-applications-count";
 import { WorkspaceDropdown } from "./workspace-dropdown";
 
 type SidebarNavData = {
   slug: string;
   pathname: string;
   queryString: string;
-  defaultProgramId?: string;
   session?: Session | null;
-  showNews?: boolean;
-  pendingPayoutsCount?: number;
-  applicationsCount?: number;
-  submittedBountiesCount?: number;
-  unreadMessagesCount?: number;
-  pendingFraudEventsCount?: number;
-  pendingLeadsCount?: number;
-  showConversionGuides?: boolean;
-  partnerNetworkEnabled?: boolean;
 };
 
-const NAV_GROUPS: SidebarNavGroups<SidebarNavData> = ({
-  slug,
-  pathname,
-  defaultProgramId,
-}) => {
-  const programGroup = {
-    id: "program",
-    name: "Partner Program",
-    description:
-      "Kickstart viral product-led growth with powerful, branded referral and affiliate programs.",
-    learnMoreHref: "https://dub.co/partners",
-    icon: ConnectedDots4,
-    href: slug ? `/${slug}/program` : "/program",
-    active:
-      !!slug &&
-      pathname.startsWith(`/${slug}`) &&
-      !pathname.startsWith(`/${slug}/links`) &&
-      !pathname.startsWith(`/${slug}/settings`),
-    popup: DubPartnersPopup,
-  };
-  const linksGroup = {
-    id: "links",
+const NAV_GROUPS: SidebarNavGroups<SidebarNavData> = ({ slug, pathname }) => [
+  {
     name: "Short Links",
     description:
       "Create, organize, and measure the performance of your short links.",
@@ -108,189 +52,13 @@ const NAV_GROUPS: SidebarNavGroups<SidebarNavData> = ({
     icon: Compass,
     href: slug ? `/${slug}/links` : "/links",
     active: pathname.startsWith(`/${slug}/links`),
-  };
-  return defaultProgramId
-    ? [programGroup, linksGroup]
-    : [linksGroup, programGroup];
-};
+  },
+];
 
 const NAV_AREAS: SidebarNavAreas<SidebarNavData> = {
-  // partner program
-  program: ({
-    slug,
-    showNews,
-    pendingPayoutsCount,
-    applicationsCount,
-    submittedBountiesCount,
-    unreadMessagesCount,
-    pendingFraudEventsCount,
-    pendingLeadsCount,
-    partnerNetworkEnabled,
-  }) => ({
-    title: "Partner Program",
-    showNews,
-    direction: "left",
-    content: [
-      {
-        items: [
-          {
-            name: "Overview",
-            icon: Gauge6,
-            href: `/${slug}/program`,
-            exact: true,
-          },
-          {
-            name: "Payouts",
-            icon: MoneyBills2,
-            href: `/${slug}/program/payouts?status=pending`,
-            badge: pendingPayoutsCount
-              ? pendingPayoutsCount > 99
-                ? "99+"
-                : pendingPayoutsCount
-              : undefined,
-          },
-          {
-            name: "Messages",
-            icon: Msgs,
-            href: `/${slug}/program/messages`,
-            badge: unreadMessagesCount
-              ? unreadMessagesCount > 99
-                ? "99+"
-                : unreadMessagesCount
-              : undefined,
-          },
-        ],
-      },
-      {
-        name: "Partners",
-        items: [
-          {
-            name: "All Partners",
-            icon: Users,
-            href: `/${slug}/program/partners`,
-            isActive: (pathname: string, href: string) =>
-              pathname.startsWith(href) &&
-              !pathname.startsWith(`${href}/applications`),
-          },
-          {
-            name: "Groups",
-            icon: Users6,
-            href: `/${slug}/program/groups`,
-          },
-          ...(partnerNetworkEnabled
-            ? [
-                {
-                  name: "Partner Network",
-                  icon: UserPlus,
-                  href: `/${slug}/program/network` as `/${string}`,
-                  badge: "New",
-                },
-              ]
-            : []),
-          {
-            name: "Applications",
-            icon: UserCheck,
-            href: `/${slug}/program/partners/applications`,
-            badge: applicationsCount
-              ? applicationsCount > 99
-                ? "99+"
-                : applicationsCount
-              : undefined,
-          },
-        ],
-      },
-      {
-        name: "Insights",
-        items: [
-          {
-            name: "Analytics",
-            icon: LinesYStatic,
-            href: `/${slug}/program/analytics`,
-          },
-          {
-            name: "Customers",
-            icon: User,
-            href: `/${slug}/program/customers`,
-            badge: pendingLeadsCount
-              ? pendingLeadsCount > 99
-                ? "99+"
-                : pendingLeadsCount
-              : undefined,
-          },
-          {
-            name: "Commissions",
-            icon: InvoiceDollar,
-            href: `/${slug}/program/commissions`,
-          },
-          {
-            name: "Risk Center",
-            icon: Flag,
-            href: `/${slug}/program/risks`,
-            badge: pendingFraudEventsCount
-              ? pendingFraudEventsCount > 99
-                ? "99+"
-                : pendingFraudEventsCount
-              : undefined,
-          },
-        ],
-      },
-      {
-        name: "Engagement",
-        items: [
-          {
-            name: "Bounties",
-            icon: Trophy,
-            href: `/${slug}/program/bounties`,
-            badge: submittedBountiesCount
-              ? submittedBountiesCount > 99
-                ? "99+"
-                : submittedBountiesCount
-              : "",
-          },
-          {
-            name: "Email Campaigns",
-            icon: PaperPlane,
-            href: `/${slug}/program/campaigns` as `/${string}`,
-          },
-          {
-            name: "Resources",
-            icon: LifeRing,
-            href: `/${slug}/program/resources`,
-          },
-        ],
-      },
-      {
-        name: "Configuration",
-        items: [
-          {
-            name: "Rewards",
-            icon: Gift,
-            href: `/${slug}/program/groups/default/rewards`,
-            arrow: true,
-            isActive: () => false,
-          },
-          {
-            name: "Links",
-            icon: Sliders,
-            href: `/${slug}/program/groups/default/links`,
-            arrow: true,
-            isActive: () => false,
-          },
-          {
-            name: "Branding",
-            icon: Brush,
-            arrow: true,
-            href: `/${slug}/program/groups/default/branding`,
-            isActive: () => false,
-          },
-        ],
-      },
-    ],
-  }),
   // short links
-  links: ({ slug, pathname, queryString, showNews }) => ({
+  links: ({ slug, pathname, queryString }) => ({
     title: "Short Links",
-    showNews,
     direction: "left",
     content: [
       {
@@ -329,17 +97,17 @@ const NAV_AREAS: SidebarNavAreas<SidebarNavData> = {
           {
             name: "Analytics",
             icon: LinesY,
-            href: `/${slug}/analytics${pathname === `/${slug}/analytics` ? "" : queryString}`,
+            href: `/${slug}/links/analytics${pathname === `/${slug}/links/analytics` ? "" : queryString}`,
           },
           {
             name: "Events",
             icon: CursorRays,
-            href: `/${slug}/events${pathname === `/${slug}/events` ? "" : queryString}`,
+            href: `/${slug}/links/events${pathname === `/${slug}/links/events` ? "" : queryString}`,
           },
           {
             name: "Customers",
             icon: User,
-            href: `/${slug}/customers`,
+            href: `/${slug}/links/customers`,
           },
         ],
       },
@@ -471,11 +239,6 @@ const NAV_AREAS: SidebarNavAreas<SidebarNavData> = {
             href: "/account/settings/security",
           },
           {
-            name: "Referrals",
-            icon: Gift,
-            href: "/account/settings/referrals",
-          },
-          {
             name: "Notifications",
             icon: Bell,
             href: "/settings/notifications",
@@ -496,75 +259,38 @@ export function AppSidebarNav({
 }) {
   const { slug } = useParams() as { slug?: string };
   const pathname = usePathname();
-  const { getQueryString } = useRouterStuff();
+  const { router, getQueryString } = useRouterStuff();
   const { data: session } = useSession();
-  const { plan, defaultProgramId, trialEndsAt } = useWorkspace();
+  const { plan, trialEndsAt } = useWorkspace();
 
   const currentArea = useMemo(() => {
     return pathname.startsWith("/account/settings")
       ? "userSettings"
       : pathname.startsWith(`/${slug}/settings`)
         ? "workspaceSettings"
-        : pathname.includes("/program/campaigns/") ||
-            pathname.includes("/program/messages/") ||
-            pathname.endsWith("/program/payouts/success")
-          ? null
-          : pathname.startsWith(`/${slug}/program`)
-            ? "program"
-            : "links";
+        : "links";
   }, [slug, pathname]);
 
-  const { program } = useProgram({
-    enabled: Boolean(currentArea === "program" && defaultProgramId),
-  });
-
-  const { payoutsCount: pendingPayoutsCount } = usePayoutsCount({
-    eligibility: "eligible",
-    status: "pending",
-    ignoreParams: true,
-    enabled: Boolean(currentArea === "program" && defaultProgramId),
-  });
-
-  const applicationsCount = useProgramApplicationsCount({
-    enabled: Boolean(currentArea === "program" && defaultProgramId),
-  });
-
-  const { submissionsCount } = useBountySubmissionsCount<
-    SubmissionsCountByStatus[]
-  >({
-    ignoreParams: true,
-    enabled: Boolean(currentArea === "program" && defaultProgramId),
-  });
-
-  const submittedBountiesCount =
-    submissionsCount?.find(({ status }) => status === "submitted")?.count || 0;
-
-  const { count: unreadMessagesCount } = usePartnerMessagesCount({
-    enabled: Boolean(currentArea === "program"),
-    query: {
-      unread: true,
-    },
-  });
-
-  const { fraudGroupCount: pendingFraudEventsCount } = useFraudGroupCount<
-    number | undefined
-  >({
-    query: { status: "pending" },
-    enabled: Boolean(currentArea === "program" && defaultProgramId),
-    ignoreParams: true,
-  });
-
-  const { data: pendingLeadsCount } = useProgramSubmittedLeadsCount<number>({
-    query: { status: "pending" },
-    ignoreParams: true,
-    enabled: Boolean(
-      currentArea === "program" &&
-        defaultProgramId &&
-        SUBMITTED_LEADS_ENABLED_PROGRAM_IDS.includes(defaultProgramId),
-    ),
+  // Navigate back to the links page when the Escape key is pressed in the workspace settings
+  useKeyboardShortcut("Escape", () => router.push(`/${slug}/links`), {
+    enabled: currentArea === "workspaceSettings",
   });
 
   const { canTrackConversions } = getPlanCapabilities(plan);
+
+  const AppBottomContent =
+    canTrackConversions && pathname.startsWith(`/${slug}/links`) ? (
+      <Link
+        href={`/${slug}/settings/tracking`}
+        className="flex w-full items-center justify-center gap-2 rounded-lg bg-neutral-200/75 px-2.5 py-2 text-xs font-medium text-neutral-700 transition-colors hover:bg-neutral-200"
+      >
+        <BookOpen className="size-4" />
+        Set up conversion tracking
+      </Link>
+    ) : null;
+
+  const freePlanOrTrial =
+    plan && (plan === "free" || isWorkspaceBillingTrialActive(trialEndsAt));
 
   return (
     <SidebarNav
@@ -578,29 +304,20 @@ export function AppSidebarNav({
           include: ["folderId"],
         }),
         session: session || undefined,
-        showNews: true,
-        defaultProgramId: defaultProgramId || undefined,
-        pendingPayoutsCount: pendingPayoutsCount?.[0]?.count ?? 0,
-        applicationsCount,
-        submittedBountiesCount,
-        unreadMessagesCount,
-        pendingFraudEventsCount,
-        pendingLeadsCount,
-        showConversionGuides:
-          canTrackConversions && pathname.startsWith(`/${slug}/links`),
-        partnerNetworkEnabled:
-          program && program.partnerNetworkEnabledAt !== null,
       }}
-      toolContent={toolContent}
-      newsContent={
-        plan &&
-        (plan === "free" || isWorkspaceBillingTrialActive(trialEndsAt) ? (
-          <SidebarUsage />
-        ) : (
-          newsContent
-        ))
-      }
       switcher={<WorkspaceDropdown />}
+      toolContent={toolContent}
+      bottomContent={
+        AppBottomContent || freePlanOrTrial ? (
+          <>
+            <div className="px-3 pb-2">{AppBottomContent}</div>
+            {freePlanOrTrial && <SidebarUsage />}
+          </>
+        ) : undefined
+      }
+      newsContent={
+        !freePlanOrTrial && currentArea === "links" ? newsContent : undefined
+      }
     />
   );
 }

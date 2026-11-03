@@ -56,7 +56,7 @@ const TAB_CONFIG: Record<
 export function TopLinks() {
   const { queryParams, searchParams } = useRouterStuff();
 
-  const { selectedTab, saleUnit, adminPage, partnerPage, dashboardProps } =
+  const { selectedTab, saleUnit, dashboardProps } =
     useContext(AnalyticsContext);
   const dataKey = selectedTab === "sales" ? saleUnit : "count";
 
@@ -204,7 +204,7 @@ export function TopLinks() {
   );
 
   const subTabProps = useMemo(() => {
-    if (adminPage || partnerPage || dashboardProps) return {};
+    if (dashboardProps) return {};
     const config = TAB_CONFIG[tab];
     return {
       subTabs: config.subtabs.map((s) => ({
@@ -214,7 +214,7 @@ export function TopLinks() {
       selectedSubTabId: subtab,
       onSelectSubTab: setSubtab,
     };
-  }, [tab, subtab, adminPage, partnerPage]);
+  }, [tab, subtab]);
 
   return (
     <AnalyticsCard

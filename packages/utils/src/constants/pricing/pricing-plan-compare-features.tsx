@@ -1,6 +1,11 @@
 import { ReactNode } from "react";
 import { nFormatter } from "../../functions/nformatter";
 import { INFINITY_NUMBER } from "../misc";
+import {
+  getPlanLimitForPeriod,
+  getPlanPeriodSuffix,
+  PlanPeriod,
+} from "./plan-period-utils";
 import { PLANS } from "./pricing-plans";
 
 export const PRICING_PLAN_COMPARE_FEATURES: {
@@ -9,7 +14,11 @@ export const PRICING_PLAN_COMPARE_FEATURES: {
   features: {
     text:
       | string
-      | ((d: { id: string; plan: (typeof PLANS)[number] }) => ReactNode);
+      | ((d: {
+          id: string;
+          plan: (typeof PLANS)[number];
+          planPeriod?: PlanPeriod;
+        }) => ReactNode);
     href?: string;
     check?:
       | boolean
@@ -28,15 +37,23 @@ export const PRICING_PLAN_COMPARE_FEATURES: {
     href: "https://dub.co/links",
     features: [
       {
-        text: ({ plan }) => (
+        text: ({ plan, planPeriod = "monthly" }) => (
           <>
             <strong>
               {plan.name === "Enterprise"
                 ? "Unlimited"
-                : nFormatter(plan.limits.links)}
+                : nFormatter(
+                    getPlanLimitForPeriod({
+                      limit: plan.limits.links,
+                      planPeriod,
+                    }),
+                  )}
             </strong>{" "}
             new links
-            {plan.name === "Enterprise" ? "" : "/mo"}
+            {getPlanPeriodSuffix({
+              planPeriod,
+              isUnlimited: plan.name === "Enterprise",
+            })}
           </>
         ),
       },
@@ -145,230 +162,6 @@ export const PRICING_PLAN_COMPARE_FEATURES: {
     ],
   },
   {
-    category: "Partners",
-    href: "https://dub.co/partners",
-    features: [
-      {
-        check: {
-          default: false,
-          business: true,
-          advanced: true,
-          enterprise: true,
-        },
-        text: "Automated global payouts",
-        href: "https://dub.co/help/article/partner-payouts",
-      },
-      {
-        check: {
-          default: false,
-          business: true,
-          advanced: true,
-          enterprise: true,
-        },
-        text: ({ id, plan }) =>
-          id === "free" || id === "pro" ? (
-            "No partner payouts"
-          ) : (
-            <>
-              <strong>
-                {plan.name === "Enterprise"
-                  ? "Unlimited"
-                  : `$${nFormatter(plan.limits.payouts / 100)}`}
-              </strong>{" "}
-              partner payouts
-              {plan.name === "Enterprise" ? "" : "/mo"}
-            </>
-          ),
-      },
-      {
-        check: {
-          default: false,
-          business: true,
-          advanced: true,
-          enterprise: true,
-        },
-        text: ({ id }) =>
-          id === "free" || id === "pro" ? (
-            "No partner payouts"
-          ) : (
-            <>
-              <strong>
-                {
-                  {
-                    business: "5%",
-                    advanced: "5%",
-                    enterprise: "3%",
-                  }[id]
-                }
-              </strong>{" "}
-              payout fees
-            </>
-          ),
-        href: "https://dub.co/help/article/partner-payouts#payout-fees-and-timing",
-      },
-      {
-        check: {
-          default: false,
-          business: true,
-          advanced: true,
-          enterprise: true,
-        },
-        text: "Tax compliance",
-        href: "https://dub.co/help/article/partner-payouts#tax-compliance",
-      },
-      {
-        check: {
-          default: false,
-          business: true,
-          advanced: true,
-          enterprise: true,
-        },
-        text: ({ id, plan }) =>
-          id === "free" || id === "pro" ? (
-            "No partner rewards"
-          ) : (
-            <>
-              <strong>{plan.name === "Business" ? "Basic" : "Advanced"}</strong>{" "}
-              partner rewards
-            </>
-          ),
-        href: "https://dub.co/help/article/partner-rewards",
-      },
-      {
-        check: {
-          default: false,
-          business: true,
-          advanced: true,
-          enterprise: true,
-        },
-        text: "Dual-sided incentives",
-        href: "https://dub.co/help/article/dual-sided-incentives",
-      },
-      {
-        check: {
-          default: false,
-          business: true,
-          advanced: true,
-          enterprise: true,
-        },
-        text: "AI landing page generator",
-        href: "https://dub.co/help/article/program-landing-page",
-      },
-      {
-        check: {
-          default: false,
-          business: true,
-          advanced: true,
-          enterprise: true,
-        },
-        text: ({ plan }) => (
-          <>
-            <strong>
-              {plan.limits.partners === 0
-                ? "No"
-                : plan.limits.partners === INFINITY_NUMBER
-                  ? "Unlimited"
-                  : nFormatter(plan.limits.partners)}
-            </strong>{" "}
-            partners
-          </>
-        ),
-        href: "https://dub.co/help/article/inviting-partners",
-      },
-      {
-        check: {
-          default: false,
-          business: true,
-          advanced: true,
-          enterprise: true,
-        },
-        text: ({ plan }) => (
-          <>
-            <strong>
-              {plan.limits.groups === 0
-                ? "No"
-                : plan.limits.groups === INFINITY_NUMBER
-                  ? "Unlimited"
-                  : nFormatter(plan.limits.groups)}
-            </strong>{" "}
-            partner groups
-          </>
-        ),
-        href: "https://dub.co/help/article/partner-groups",
-      },
-      {
-        check: {
-          default: false,
-          business: true,
-          advanced: true,
-          enterprise: true,
-        },
-        text: ({ plan }) => (
-          <>
-            <strong>
-              {plan.limits.partnerTags === 0
-                ? "No"
-                : plan.limits.partnerTags === INFINITY_NUMBER
-                  ? "Unlimited"
-                  : nFormatter(plan.limits.partnerTags)}
-            </strong>{" "}
-            partner tags
-          </>
-        ),
-        href: "https://dub.co/help/article/partner-groups",
-      },
-      {
-        check: {
-          default: false,
-          advanced: true,
-          enterprise: true,
-        },
-        text: "Embedded referral dashboard",
-        href: "https://dub.co/docs/partners/embedded-referrals",
-      },
-      {
-        check: {
-          default: false,
-          advanced: true,
-          enterprise: true,
-        },
-        text: "Partners API",
-        href: "https://dub.co/docs/api-reference/endpoint/create-a-partner",
-      },
-      {
-        check: {
-          default: false,
-          advanced: true,
-          enterprise: true,
-        },
-        text: "Messaging center",
-      },
-      {
-        check: {
-          default: false,
-          advanced: true,
-          enterprise: true,
-        },
-        text: "Email campaigns",
-      },
-      {
-        check: {
-          default: false,
-          advanced: true,
-          enterprise: true,
-        },
-        text: "Fraud & risk prevention",
-      },
-      {
-        check: {
-          default: false,
-          enterprise: true,
-        },
-        text: "Partner network access",
-      },
-    ],
-  },
-  {
     category: "Analytics",
     href: "https://dub.co/analytics",
     features: [
@@ -377,15 +170,23 @@ export const PRICING_PLAN_COMPARE_FEATURES: {
         href: "https://dub.co/help/article/dub-analytics",
       },
       {
-        text: ({ plan }) => (
+        text: ({ plan, planPeriod = "monthly" }) => (
           <>
             <strong>
               {plan.name === "Enterprise"
                 ? "Unlimited"
-                : nFormatter(plan.limits.clicks)}
+                : nFormatter(
+                    getPlanLimitForPeriod({
+                      limit: plan.limits.clicks,
+                      planPeriod,
+                    }),
+                  )}
             </strong>{" "}
             tracked events
-            {plan.name === "Enterprise" ? "" : "/mo"}
+            {getPlanPeriodSuffix({
+              planPeriod,
+              isUnlimited: plan.name === "Enterprise",
+            })}
           </>
         ),
         href: "https://dub.co/help/article/dub-analytics-limits",
@@ -494,7 +295,7 @@ export const PRICING_PLAN_COMPARE_FEATURES: {
           enterprise: true,
         },
         text: "Event webhooks",
-        href: "https://dub.co/docs/concepts/webhooks/introduction",
+        href: "https://dub.co/docs/webhooks/introduction",
       },
     ],
   },
@@ -533,13 +334,6 @@ export const PRICING_PLAN_COMPARE_FEATURES: {
         text: "SAML/SSO",
         href: "https://dub.co/help/category/saml-sso",
       },
-      {
-        check: {
-          default: false,
-          enterprise: true,
-        },
-        text: "Audit logs",
-      },
     ],
   },
   {
@@ -549,11 +343,11 @@ export const PRICING_PLAN_COMPARE_FEATURES: {
       {
         text: ({ id }) =>
           ({
-            free: "Basic support",
-            pro: "Elevated support",
-            business: "Priority support",
-            advanced: "Priority via Slack",
-            enterprise: "Priority with SLA",
+            free: "Community support",
+            pro: "Email support",
+            business: "Email support",
+            advanced: "Priority email support",
+            enterprise: "Slack support with SLA",
           })[id],
       },
       {

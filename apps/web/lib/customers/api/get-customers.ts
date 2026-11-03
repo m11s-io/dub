@@ -1,8 +1,9 @@
-import { prisma, sanitizeFullTextSearch } from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { getCustomersQuerySchemaExtended } from "@/lib/zod/schemas/customers";
 import * as z from "zod/v4";
 import { DubApiError } from "../../api/errors";
 import { buildPaginationQuery } from "../../api/pagination";
+import { buildCustomerSearchWhere } from "./customer-count-where";
 
 type GetCustomersInput = z.infer<typeof getCustomersQuerySchemaExtended> & {
   workspaceId: string;
@@ -11,8 +12,6 @@ type GetCustomersInput = z.infer<typeof getCustomersQuerySchemaExtended> & {
 export async function getCustomers(filters: GetCustomersInput) {
   const {
     customerIds,
-    programId,
-    partnerId,
     workspaceId,
     email,
     externalId,
@@ -55,25 +54,8 @@ export async function getCustomers(filters: GetCustomersInput) {
             id: { in: customerIds },
           }
         : {}),
-      ...(programId && {
-        programId,
-      }),
-      ...(partnerId && {
-        partnerId,
-      }),
       projectId: workspaceId,
-      ...(email
-        ? { email }
-        : externalId
-          ? { externalId }
-          : search
-            ? search.includes("@")
-              ? { email: search }
-              : {
-                  email: { search: sanitizeFullTextSearch(search) },
-                  name: { search: sanitizeFullTextSearch(search) },
-                }
-            : {}),
+      ...buildCustomerSearchWhere({ email, externalId, search }),
       ...(country && {
         country,
       }),
@@ -92,20 +74,6 @@ export async function getCustomers(filters: GetCustomersInput) {
                 key: true,
                 shortLink: true,
                 url: true,
-                programId: true,
-              },
-            },
-            programEnrollment: {
-              include: {
-                partner: {
-                  select: {
-                    id: true,
-                    name: true,
-                    email: true,
-                    image: true,
-                  },
-                },
-                discount: true,
               },
             },
           },

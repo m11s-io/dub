@@ -20,14 +20,7 @@ export interface EdgeLinkProps {
   expiredUrl: string | null;
   createdAt: string;
   trackConversion: boolean;
-  programId: string | null;
-  partnerId: string | null;
 }
-
-/** Link from edge (getLinkViaEdge) with webhooks, matching ExpandedLink shape */
-export type EdgeLinkWithWebhooks = EdgeLinkProps & {
-  webhooks: { webhookId: string }[];
-};
 
 export interface EdgeDomainProps {
   id: string;

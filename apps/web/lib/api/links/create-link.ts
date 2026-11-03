@@ -1,15 +1,13 @@
 import { qstash } from "@/lib/cron";
-import { getPartnerEnrollmentInfo } from "@/lib/planetscale/get-partner-enrollment-info";
 import { prisma } from "@/lib/prisma";
 import { isNotHostedImage, storage } from "@/lib/storage";
 import { recordLink } from "@/lib/tinybird";
 import { ProcessedLinkProps } from "@/lib/types";
 import { publishWorkspaceLinksUsageEvent } from "@/lib/upstash/redis-streams/workspace-links-usage";
-import { propagateWebhookTriggerChanges } from "@/lib/webhook/update-webhook";
 import {
   APP_DOMAIN_WITH_NGROK,
-  R2_URL,
   getParamsFromURL,
+  R2_URL,
   truncate,
 } from "@dub/utils";
 import { linkConstructorSimple } from "@dub/utils/src/functions/link-constructor";
@@ -131,7 +129,6 @@ export async function createLink(link: ProcessedLinkProps) {
       },
       include: {
         ...includeTags,
-        // no need to includeProgramEnrollment because we're doing getPartnerEnrollmentInfo below
         webhooks: webhookIds ? true : false,
       },
     }),
@@ -141,35 +138,12 @@ export async function createLink(link: ProcessedLinkProps) {
 
   waitUntil(
     (async () => {
-      const { partner, discount } = await getPartnerEnrollmentInfo({
-        programId: response.programId,
-        partnerId: response.partnerId,
-      });
-
       await Promise.allSettled([
         // Cache link in Redis
-        linkCache.set({
-          ...response,
-          ...(partner && { partner }),
-          ...(discount && { discount }),
-        }),
+        linkCache.set(response),
 
         // Record link in Tinybird
-        recordLink({
-          ...response,
-          ...(partner && {
-            programEnrollment: {
-              ...(partner?.groupId && {
-                groupId: partner.groupId,
-              }),
-              programPartnerTags: partner?.partnerTagIds.map(
-                (partnerTagId: string) => ({
-                  partnerTagId,
-                }),
-              ),
-            },
-          }),
-        }),
+        recordLink(response),
 
         // Upload image to R2 and update the link with the uploaded image URL when
         // proxy is enabled and image is set and is not a hosted image URL
@@ -213,12 +187,6 @@ export async function createLink(link: ProcessedLinkProps) {
             workspaceId: link.projectId,
             linksCount: 1,
             timestamp: new Date().toISOString(),
-          }),
-
-        // Propagate webhook trigger changes
-        webhookIds &&
-          propagateWebhookTriggerChanges({
-            webhookIds,
           }),
 
         // Schedule AB test completion

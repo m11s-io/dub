@@ -6,13 +6,49 @@ import UpdateSubscription from "@/ui/account/update-subscription";
 import UploadAvatar from "@/ui/account/upload-avatar";
 import UserId from "@/ui/account/user-id";
 import { PageWidthWrapper } from "@/ui/layout/page-width-wrapper";
-import { Form, useCurrentSubdomain } from "@dub/ui";
+import { Form } from "@dub/ui";
 import { useSession } from "next-auth/react";
 import { toast } from "sonner";
 
 export function SettingsPageClient() {
   const { data: session, update, status } = useSession();
-  const { subdomain } = useCurrentSubdomain();
+
+  const patchUser = async (body: Record<string, unknown>) => {
+    const res = await fetch("/api/user", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (res.status !== 200) {
+      const { error } = await res.json();
+      throw new Error(error.message);
+    }
+
+    const isPendingEmailChange =
+      typeof body.email === "string" && body.email !== session?.user?.email;
+
+    // Email isn't updated until the user confirms via link — skip session refresh
+    if (!isPendingEmailChange) {
+      await update();
+    }
+  };
+
+  const requestSubmit = ({
+    body,
+    onSuccess,
+  }: {
+    body: Record<string, unknown>;
+    onSuccess: () => void;
+  }): Promise<void> =>
+    patchUser(body)
+      .then(onSuccess)
+      .catch((error) => {
+        toast.error(error.message);
+      })
+      .then(() => undefined);
 
   return (
     <PageWidthWrapper className="mb-8 grid gap-8">
@@ -28,20 +64,11 @@ export function SettingsPageClient() {
         }}
         helpText="Max 32 characters."
         handleSubmit={(data) =>
-          fetch("/api/user", {
-            method: "PATCH",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(data),
-          }).then(async (res) => {
-            if (res.status === 200) {
-              update();
+          requestSubmit({
+            body: data,
+            onSuccess: () => {
               toast.success("Successfully updated your name!");
-            } else {
-              const { error } = await res.json();
-              toast.error(error.message);
-            }
+            },
           })
         }
       />
@@ -56,27 +83,19 @@ export function SettingsPageClient() {
         }}
         helpText={<UpdateSubscription />}
         handleSubmit={(data) =>
-          fetch("/api/user", {
-            method: "PATCH",
-            headers: {
-              "Content-Type": "application/json",
-            },
-            body: JSON.stringify(data),
-          }).then(async (res) => {
-            if (res.status === 200) {
+          requestSubmit({
+            body: data,
+            onSuccess: () => {
               toast.success(
                 `A confirmation email has been sent to ${data.email}.`,
               );
-            } else {
-              const { error } = await res.json();
-              toast.error(error.message);
-            }
+            },
           })
         }
       />
       <UploadAvatar />
       <UserId />
-      {subdomain === "app" && <UpdateDefaultWorkspace />}
+      <UpdateDefaultWorkspace />
       <DeleteAccountSection />
     </PageWidthWrapper>
   );

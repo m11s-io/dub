@@ -1,14 +1,16 @@
+import { testIds } from "@/lib/e2e/test-ids";
 import { StepPage } from "../step-page";
 import { Form } from "./form";
 
 export default function Workspace() {
   return (
     <StepPage
+      headingTestId={testIds.onboarding.stepWorkspace}
       title="Create your workspace"
       description={
         <>
-          Where you'll work with your team to recruit, manage, and payout your
-          partners.{" "}
+          Where you'll work with your team to create, manage, and track your
+          short links.{" "}
           <a
             href="https://dub.co/help/article/what-is-a-workspace"
             target="_blank"

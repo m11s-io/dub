@@ -9,8 +9,9 @@ export const HUBSPOT_DEFAULT_SETTINGS = {
 };
 
 export const LEAD_TRIGGER_EVENT_OPTIONS = [
-  "lifecycleStageReached",
-  "dealCreated",
+  "lifecycleStageReached", // contact's lifecyclestage reaches leadLifecycleStageId
+  "dealCreated", // a deal is created for the contact
+  "dealStageReached", // a deal's dealstage reaches leadDealStageId
 ] as const;
 
 export const HUBSPOT_DUB_CONTACT_PROPERTIES = [
@@ -25,13 +26,6 @@ export const HUBSPOT_DUB_CONTACT_PROPERTIES = [
   {
     label: "Dub Link",
     name: "dub_link",
-    type: "string",
-    fieldType: "text",
-    groupName: "contactinformation",
-  },
-  {
-    label: "Dub Partner Email",
-    name: "dub_partner_email",
     type: "string",
     fieldType: "text",
     groupName: "contactinformation",

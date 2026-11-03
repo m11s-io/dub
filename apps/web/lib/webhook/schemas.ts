@@ -1,13 +1,7 @@
 import * as z from "zod/v4";
 import { clickEventSchema } from "../zod/schemas/clicks";
-import { CommissionWebhookSchema } from "../zod/schemas/commissions";
 import { CustomerSchema } from "../zod/schemas/customers";
 import { linkEventSchema } from "../zod/schemas/links";
-import {
-  EnrolledPartnerSchema,
-  WebhookPartnerSchema,
-} from "../zod/schemas/partners";
-import { partnerApplicationWebhookSchema } from "../zod/schemas/program-application";
 import { WEBHOOK_TRIGGERS } from "./constants";
 
 const webhookSaleSchema = z.object({
@@ -44,7 +38,6 @@ export const leadWebhookEventSchema = z.object({
   customer: CustomerSchema,
   click: clickEventSchema,
   link: linkEventSchema,
-  partner: WebhookPartnerSchema.nullish(),
   metadata: metadataSchema,
 });
 
@@ -54,7 +47,6 @@ export const saleWebhookEventSchema = z.object({
   click: clickEventSchema,
   link: linkEventSchema,
   sale: webhookSaleSchema,
-  partner: WebhookPartnerSchema.nullish(),
   metadata: metadataSchema,
 });
 
@@ -127,46 +119,6 @@ export const webhookEventSchema = z
         description: "Triggered when a sale is created.",
         id: "SaleCreatedEvent",
         outputId: "SaleCreatedEvent",
-      }),
-
-    z
-      .object({
-        id: z.string(),
-        event: z.literal("partner.enrolled"),
-        createdAt: z.string(),
-        data: EnrolledPartnerSchema,
-      })
-      .meta({
-        description: "Triggered when a partner is enrolled.",
-        id: "PartnerEnrolledEvent",
-        outputId: "PartnerEnrolledEvent",
-      }),
-
-    z
-      .object({
-        id: z.string(),
-        event: z.literal("partner.application_submitted"),
-        createdAt: z.string(),
-        data: partnerApplicationWebhookSchema,
-      })
-      .meta({
-        description:
-          "Triggered when a partner submits an application to join a program.",
-        id: "PartnerApplicationSubmittedEvent",
-        outputId: "PartnerApplicationSubmittedEvent",
-      }),
-
-    z
-      .object({
-        id: z.string(),
-        event: z.literal("commission.created"),
-        createdAt: z.string(),
-        data: CommissionWebhookSchema,
-      })
-      .meta({
-        description: "Triggered when a commission is created for a partner.",
-        id: "CommissionCreatedEvent",
-        outputId: "CommissionCreatedEvent",
       }),
   ])
   .meta({

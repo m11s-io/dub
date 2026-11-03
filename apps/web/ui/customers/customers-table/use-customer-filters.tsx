@@ -1,37 +1,20 @@
 import useCustomersCount from "@/lib/swr/use-customers-count";
-import usePartners from "@/lib/swr/use-partners";
 import useWorkspace from "@/lib/swr/use-workspace";
-import { EnrolledPartnerProps } from "@/lib/types";
 import { CountryFlag } from "@/ui/shared/country-flag";
 import { LinkLogo, useRouterStuff } from "@dub/ui";
-import { FlagWavy, Hyperlink, SquareUserSparkle2, Users } from "@dub/ui/icons";
-import {
-  COUNTRIES,
-  getApexDomain,
-  getPrettyUrl,
-  nFormatter,
-  OG_AVATAR_URL,
-} from "@dub/utils";
+import { FlagWavy, Hyperlink, SquareUserSparkle2 } from "@dub/ui/icons";
+import { COUNTRIES, getApexDomain, getPrettyUrl, nFormatter } from "@dub/utils";
 import { useCallback, useMemo, useState } from "react";
-import { useDebounce } from "use-debounce";
 
 export function useCustomerFilters(
   extraSearchParams: Record<string, string>,
-  {
-    enabled = true,
-    isProgramPage = false,
-  }: { enabled?: boolean; isProgramPage?: boolean } = {},
+  { enabled = true }: { enabled?: boolean } = {},
 ) {
   const { searchParamsObj, queryParams } = useRouterStuff();
-  const { id: workspaceId, slug, defaultProgramId } = useWorkspace();
+  const { id: workspaceId, slug } = useWorkspace();
 
   const [selectedFilter, setSelectedFilter] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [debouncedSearch] = useDebounce(search, 500);
-
-  const { partners } = usePartnerFilterOptions(
-    selectedFilter === "partnerId" ? debouncedSearch : "",
-  );
 
   const { data: countriesCount } = useCustomersCount<
     | {
@@ -42,10 +25,6 @@ export function useCustomerFilters(
   >({
     query: {
       groupBy: "country",
-      ...(isProgramPage &&
-        defaultProgramId && {
-          programId: defaultProgramId,
-        }),
     },
     enabled,
   });
@@ -61,10 +40,6 @@ export function useCustomerFilters(
   >({
     query: {
       groupBy: "linkId",
-      ...(isProgramPage &&
-        defaultProgramId && {
-          programId: defaultProgramId,
-        }),
     },
     enabled,
   });
@@ -91,26 +66,6 @@ export function useCustomerFilters(
             country: getValue(),
           }),
         },
-      },
-      {
-        key: "partnerId",
-        icon: Users,
-        label: "Partner",
-        shouldFilter: false,
-        options:
-          partners?.map(({ id, name, image }) => {
-            return {
-              value: id,
-              label: name,
-              icon: (
-                <img
-                  src={image || `${OG_AVATAR_URL}${id}`}
-                  alt={`${name} image`}
-                  className="size-4 rounded-full"
-                />
-              ),
-            };
-          }) ?? null,
       },
       {
         key: "linkId",
@@ -148,14 +103,13 @@ export function useCustomerFilters(
         },
       },
     ],
-    [partners, countriesCount, linksCount, slug],
+    [countriesCount, linksCount, slug],
   );
 
   const activeFilters = useMemo(() => {
-    const { country, linkId, externalId, partnerId } = searchParamsObj;
+    const { country, linkId, externalId } = searchParamsObj;
 
     return [
-      ...(partnerId ? [{ key: "partnerId", value: partnerId }] : []),
       ...(country ? [{ key: "country", value: country }] : []),
       ...(linkId ? [{ key: "linkId", value: linkId }] : []),
       ...(externalId ? [{ key: "externalId", value: externalId }] : []),
@@ -184,7 +138,7 @@ export function useCustomerFilters(
   const onRemoveAll = useCallback(
     () =>
       queryParams({
-        del: ["partnerId", "country", "linkId", "externalId", "search"],
+        del: ["country", "linkId", "externalId", "search"],
       }),
     [queryParams],
   );
@@ -212,39 +166,4 @@ export function useCustomerFilters(
     setSearch,
     setSelectedFilter,
   };
-}
-
-function usePartnerFilterOptions(search: string) {
-  const { searchParamsObj } = useRouterStuff();
-
-  const { partners, loading: partnersLoading } = usePartners({
-    query: { search },
-  });
-
-  const { partners: selectedPartners } = usePartners({
-    query: {
-      partnerIds: searchParamsObj.partnerId
-        ? [searchParamsObj.partnerId]
-        : undefined,
-    },
-  });
-
-  const result = useMemo(() => {
-    return partnersLoading ||
-      // Consider partners loading if we can't find the currently filtered partner
-      (searchParamsObj.partnerId &&
-        ![...(selectedPartners ?? []), ...(partners ?? [])].some(
-          (p) => p.id === searchParamsObj.partnerId,
-        ))
-      ? null
-      : ([
-          ...(partners ?? []),
-          // Add selected partner to list if not already in partners
-          ...(selectedPartners
-            ?.filter((st) => !partners?.some((t) => t.id === st.id))
-            ?.map((st) => ({ ...st, hideDuringSearch: true })) ?? []),
-        ] as (EnrolledPartnerProps & { hideDuringSearch?: boolean })[]);
-  }, [partnersLoading, partners, selectedPartners, searchParamsObj.partnerId]);
-
-  return { partners: result };
 }

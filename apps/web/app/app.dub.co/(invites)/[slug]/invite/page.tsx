@@ -2,13 +2,12 @@ import { getSession } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { UserAvatar } from "@/ui/users/user-avatar";
 import {
-  Book2Fill,
-  CircleCheckFill,
+  Book2,
+  CircleCheck,
   CircleHalfDottedClock,
   DubLinksIcon,
-  DubPartnersIcon,
-  LifeRingFill,
-  MsgsFill,
+  LifeRing,
+  Msgs,
   Tooltip,
   Wordmark,
 } from "@dub/ui";
@@ -61,7 +60,6 @@ export default async function WorkspaceInvitePage({
           select: {
             name: true,
             logo: true,
-            defaultProgramId: true,
             users: {
               select: {
                 user: {
@@ -134,20 +132,6 @@ export default async function WorkspaceInvitePage({
                   href: "https://dub.co/links",
                   cta: "Learn more",
                 },
-                ...(invite.project.defaultProgramId
-                  ? [
-                      {
-                        icon: (
-                          <div className="flex size-5 items-center justify-center rounded bg-violet-400">
-                            <DubPartnersIcon className="size-3 text-violet-900" />
-                          </div>
-                        ),
-                        title: "Dub Partners",
-                        href: "https://dub.co/partners",
-                        cta: "Learn more",
-                      },
-                    ]
-                  : []),
               ].map(({ icon, title, href, cta }) => (
                 <div
                   key={href}
@@ -231,21 +215,21 @@ export default async function WorkspaceInvitePage({
             <div className="divide-border-subtle border-border-subtle bg-bg-muted flex flex-col divide-y rounded-lg border">
               {[
                 {
-                  icon: LifeRingFill,
+                  icon: LifeRing,
                   title: "Help center",
                   description: "Answers to your questions",
                   href: "https://dub.co/help",
                   cta: "Read",
                 },
                 {
-                  icon: Book2Fill,
+                  icon: Book2,
                   title: "Docs",
                   description: "Platform documentation",
                   href: "https://dub.co/docs",
                   cta: "Learn",
                 },
                 {
-                  icon: MsgsFill,
+                  icon: Msgs,
                   title: "Support",
                   description: "Product support or help requests",
                   href: "https://dub.co/contact/support",
@@ -258,7 +242,7 @@ export default async function WorkspaceInvitePage({
                 >
                   <div className="flex min-w-0 items-center gap-2">
                     <div className="flex size-8 items-center justify-center rounded-md bg-black/5">
-                      <Icon className="size-4" />
+                      <Icon variant="fill" className="size-4" />
                     </div>
                     <div className="min-w-0">
                       <div className="text-content-default text-sm font-medium">
@@ -326,7 +310,7 @@ function Hero({
               <CircleHalfDottedClock className="size-5 text-neutral-500" />
             </div>
           ) : (
-            <CircleCheckFill className="size-8 text-green-500" />
+            <CircleCheck variant="fill" className="size-8 text-green-500" />
           )}
         </div>
       </div>

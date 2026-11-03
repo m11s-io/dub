@@ -1,4 +1,4 @@
-import { DubApiError, handleAndReturnErrorResponse } from "@/lib/api/errors";
+import { DubApiError, handleApiError } from "@/lib/api/errors";
 import { prisma } from "@/lib/prisma";
 import { BetaFeatures, PlanProps, WorkspaceWithUsers } from "@/lib/types";
 import { ratelimit } from "@/lib/upstash";
@@ -6,13 +6,20 @@ import { API_DOMAIN, getSearchParams } from "@dub/utils";
 import { WorkspaceRole } from "@prisma/client";
 import { waitUntil } from "@vercel/functions";
 import { headers } from "next/headers";
+import { NextResponse } from "next/server";
 import { captureRequestLog } from "../api-logs/capture-request-log";
 import { getRatelimitForPlan } from "../api/get-ratelimit-for-plan";
 import {
   PermissionAction,
   getPermissionsByRole,
 } from "../api/rbac/permissions";
-import { Scope, mapScopesToPermissions } from "../api/tokens/scopes";
+import {
+  LEGACY_SCOPE_GRANTS,
+  LegacyScopeGrant,
+  Scope,
+  grantLegacyScopePermissions,
+  mapScopesToPermissions,
+} from "../api/tokens/scopes";
 import { throwIfNoAccess } from "../api/tokens/throw-if-no-access";
 import { normalizeWorkspaceId } from "../api/workspaces/workspace-id";
 import { withAxiomBodyLog } from "../axiom/server";
@@ -58,23 +65,16 @@ interface WithWorkspaceHandler {
 export const withWorkspace = (
   handler: WithWorkspaceHandler,
   {
-    requiredPlan = [
-      "free",
-      "pro",
-      "business",
-      "business plus",
-      "business max",
-      "business extra",
-      "advanced",
-      "enterprise",
-    ], // if the action needs a specific plan
+    requiredPlan = ["free", "pro", "business", "advanced", "enterprise"], // if the action needs a specific plan
     requiredPermissions = [],
     requiredRoles = [],
+    legacyScopeGrants = [], // permissions that older restricted tokens keep on this route only
     featureFlag, // if the action needs a specific feature flag
   }: {
     requiredPlan?: Array<PlanProps>;
     requiredPermissions?: PermissionAction[];
     requiredRoles?: WorkspaceRole[];
+    legacyScopeGrants?: LegacyScopeGrant[];
     featureFlag?: BetaFeatures;
   } = {},
 ) => {
@@ -175,9 +175,21 @@ export const withWorkspace = (
         if (apiKey) {
           const hashedKey = await hashToken(apiKey);
 
-          const cachedToken = await tokenCache.get({
+          let cachedToken = await tokenCache.get({
             hashedKey,
           });
+
+          // Entries cached before scope dates were stored would be treated as
+          // legacy and granted extra permissions, so reload them from the DB.
+          if (isRestrictedToken && cachedToken) {
+            const cachedScopeEffectiveSince = cachedToken.installationId
+              ? cachedToken.installedIntegration?.createdAt
+              : cachedToken.createdAt;
+
+            if (cachedScopeEffectiveSince == null) {
+              cachedToken = null;
+            }
+          }
 
           if (!cachedToken) {
             const prismaArgs = {
@@ -189,8 +201,14 @@ export const withWorkspace = (
                 expires: true,
                 ...(isRestrictedToken && {
                   scopes: true,
+                  createdAt: true,
                   projectId: true,
                   installationId: true,
+                  installedIntegration: {
+                    select: {
+                      createdAt: true,
+                    },
+                  },
                   project: {
                     select: {
                       plan: true,
@@ -383,6 +401,10 @@ export const withWorkspace = (
             },
           });
 
+          // Clear so non-member denials are not attributed to this workspace
+          // in API logs or Axiom error context.
+          workspace = undefined;
+
           if (!pendingInvites) {
             throw new DubApiError({
               code: "not_found",
@@ -407,14 +429,30 @@ export const withWorkspace = (
           workspace.users[0].role = "owner";
         }
 
-        permissions = getPermissionsByRole(workspace.users[0].role);
+        const rolePermissions = getPermissionsByRole(workspace.users[0].role);
+        permissions = rolePermissions;
 
         // Find the subset of permissions that the user has access to based on the token scopes
-        if (isRestrictedToken && token?.scopes) {
-          const tokenScopes = (token.scopes.split(" ") as Scope[]) || [];
+        // Empty/null scopes must fail closed (no permissions) — never inherit full role perms
+        if (isRestrictedToken) {
+          const tokenScopes = (token?.scopes?.split(" ").filter(Boolean) ??
+            []) as Scope[];
+
           permissions = mapScopesToPermissions(tokenScopes).filter((p) =>
-            permissions.includes(p),
+            rolePermissions.includes(p),
           );
+
+          // OAuth access tokens are reissued on refresh, so grandfather the
+          // installation date. Workspace API keys use their own createdAt.
+          const scopeEffectiveSince = token?.installationId
+            ? token.installedIntegration?.createdAt
+            : token?.createdAt;
+
+          permissions = grantLegacyScopePermissions({
+            permissions,
+            createdAt: scopeEffectiveSince,
+            grants: [...LEGACY_SCOPE_GRANTS, ...legacyScopeGrants],
+          }).filter((p) => rolePermissions.includes(p));
         }
 
         // Check user has permission to make the action
@@ -452,8 +490,16 @@ export const withWorkspace = (
           }
         }
 
+        const normalizedWorkspacePlan = [
+          "business plus",
+          "business max",
+          "business extra",
+        ].includes(workspace.plan)
+          ? "business"
+          : workspace.plan;
+
         // plan checks
-        if (!requiredPlan.includes(workspace.plan)) {
+        if (!requiredPlan.includes(normalizedWorkspacePlan)) {
           throw new DubApiError({
             code: "forbidden",
             message: "Unauthorized: Need higher plan.",
@@ -462,7 +508,7 @@ export const withWorkspace = (
 
         // analytics API checks
         if (
-          workspace.plan === "free" &&
+          normalizedWorkspacePlan === "free" &&
           apiKey &&
           url.pathname.includes("/analytics")
         ) {
@@ -483,7 +529,7 @@ export const withWorkspace = (
           token,
         });
 
-        if (workspace) {
+        if (workspace?.users?.length) {
           waitUntil(
             captureRequestLog({
               req: reqForLog,
@@ -499,17 +545,22 @@ export const withWorkspace = (
         }
 
         return response;
-      } catch (error) {
-        const errorResponse = handleAndReturnErrorResponse(
-          error,
-          responseHeaders,
+      } catch (err) {
+        const { error, status } = handleApiError({
+          error: err,
+          workspace,
+        });
+
+        const response = NextResponse.json(
+          { error },
+          { headers: responseHeaders, status },
         );
 
-        if (workspace) {
+        if (workspace?.users?.length) {
           waitUntil(
             captureRequestLog({
               req: reqForLog,
-              response: errorResponse,
+              response,
               workspace,
               session,
               token,
@@ -520,7 +571,7 @@ export const withWorkspace = (
           );
         }
 
-        return errorResponse;
+        return response;
       }
     },
   );
