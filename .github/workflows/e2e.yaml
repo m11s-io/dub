@@ -10,7 +10,7 @@ jobs:
   api-tests:
     timeout-minutes: 30
     if: github.event_name == 'deployment_status' && github.event.deployment_status.state == 'success'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-26.04
     steps:
       - name: Check out code
         uses: actions/checkout@0717577d45739eb3c851188b29f50ed6c0b2194e # v2
